@@ -2,6 +2,7 @@ from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError,APIException
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 
 from .serializers import SumInputSerializer
@@ -23,11 +24,12 @@ JWT_EXPIRATION = timedelta(days=1)
 MIN_PASSWORD_LENGTH = 6
 PASSWORD_REGEX = re.compile(r'^(?=.*[A-Za-z])(?=.*\d).+$')  # At least one letter and one number
 
-def createToken(userid,username):
+def createToken(userid,username,timeInDays):
+    
     payload = {
         "user_id":userid,
         "user_name":username,
-        "expiration":str(datetime.now(tz=timezone.utc)+JWT_EXPIRATION)
+        "expiration":str(datetime.now(tz=timezone.utc)+timedelta(days=timeInDays))
         }
     
     token = jwt.encode(payload,SECRET_KEY,algorithm="HS256")
@@ -77,8 +79,6 @@ class UserRegister(APIView):
         user_name = request.data.get('user_name').lower()
         user_pass = request.data.get('user_pass').lower()
         
-        
-                
         #---credentials validation---
         cur.execute("""select usr_id from usr_info where usr_login = %s""",(user_name,))
         if cur.fetchone():
@@ -104,8 +104,6 @@ class UserLogin(APIView):
             
         user_name = request.data.get('user_name').lower()
         user_pass = request.data.get('user_pass').lower()
-        
-        
             
         #---credentials validation---
         cur.execute("""select usr_id from usr_info where usr_login = %s and usr_password = %s""",(user_name,user_pass,))
@@ -114,7 +112,8 @@ class UserLogin(APIView):
         if not user:
             raise ValidationError(f"User not found or invalid credentials.")
         
-        token = createToken(user[0],user_name)  
-        return Response({"response":f"Login successful",'user': {'id': user[0], 'username': user_name},"token":f"{token}"})
+        access_token = createToken(user[0],user_name,1)  
+        refresh_token = createToken(user[0],user_name,90)
+        return Response({"response":f"Login successful",'user': {'id': user[0], 'username': user_name},"access_token":f"{access_token}","refresh_token":f"{refresh_token}"})
 
         

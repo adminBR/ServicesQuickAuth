@@ -10,6 +10,8 @@ from datetime import datetime,timedelta,timezone
 
 from .serializers import addServiceSerializer,updateServiceSerializer
 
+from rest_framework.permissions import IsAuthenticated
+
 import re
 import json
 
@@ -18,36 +20,11 @@ DB_NAME = 'auth_service'
 DB_USER = 'postgres'
 DB_PASSWORD = 'postgres'
 
-SECRET_KEY = "testkey"
-JWT_EXPIRATION = timedelta(days=1)
 
 # Password validation settings
 MIN_PASSWORD_LENGTH = 6
 PASSWORD_REGEX = re.compile(r'^(?=.*[A-Za-z])(?=.*\d).+$')  # At least one letter and one number
 
-def createToken(userid,username):
-    payload = {
-        "user_id":userid,
-        "user_name":username,
-        "expiration":str(datetime.now(tz=timezone.utc)+JWT_EXPIRATION)
-        }
-    
-    token = jwt.encode(payload,SECRET_KEY,algorithm="HS256")
-    return token
-
-def extractToken(token):
-    payload = jwt.decode(token,SECRET_KEY,algorithms=['HS256'])
-    return payload
-
-def validate_password(password):
-    
-    if len(password) < MIN_PASSWORD_LENGTH:
-        raise ValidationError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters long")
-    
-    if not PASSWORD_REGEX.match(password):
-        raise ValidationError("Password must contain at least one letter and one number")
-    
-    return True
 
 def get_db_connection():
     try:
@@ -62,8 +39,9 @@ def get_db_connection():
         print(f"Database conection error: {e}")
         raise APIException(f"Database conection error: {e}")
 
-# Create your views here.
 class serviceManaging(APIView):
+    
+    permission_classes = [IsAuthenticated]
     
     def get(self,request:Request):
         conn = get_db_connection()
@@ -108,7 +86,6 @@ class serviceManaging(APIView):
         serializer.is_valid(raise_exception=True)
 
         item = serializer.validated_data
-        print(item)
         
         query = "UPDATE services_info SET "
         fields = []
@@ -136,12 +113,8 @@ class serviceManaging(APIView):
         if not fields:
             raise ValidationError("No Fields being updated.")
         
-        print(query)
-        print(values)
-
         try:
             cur.execute(query, values)
-            result = cur.fetchone()
             conn.commit()
         
         except psycopg2.Error as e:
@@ -149,4 +122,4 @@ class serviceManaging(APIView):
             raise APIException(f"Insert failed. {e}")
         
 
-        return Response({"message":"Success","id":result[0]})
+        return Response({"message":"Success","id":item['id']})
