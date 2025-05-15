@@ -1,7 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search, Bell, Settings, LogOut } from "lucide-react";
 
+import { useNavigate } from "react-router-dom";
+
 export default function Dashboard() {
+  const navigate = useNavigate();
+
   // Sample data for the service cards
   const [services, setServices] = useState([
     {
@@ -72,7 +76,7 @@ export default function Dashboard() {
   );
 
   // Function to handle service card click
-  const handleServiceClick = (ip) => {
+  const handleServiceClick = (ip: string) => {
     // Open the service in a new tab
     window.open(`http://${ip}`, "_blank");
   };

@@ -3,6 +3,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError,APIException
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework.permissions import AllowAny
+from rest_framework.authentication import get_authorization_header
 
 
 from .serializers import SumInputSerializer
@@ -34,6 +36,7 @@ def createToken(userid,username,timeInDays):
     
     token = jwt.encode(payload,SECRET_KEY,algorithm="HS256")
     return token
+
 
 def extractToken(token):
     payload = jwt.decode(token,SECRET_KEY,algorithms=['HS256'])
@@ -91,6 +94,8 @@ class UserRegister(APIView):
         return Response({'response':f"User: {user_name} has been successfully registered"})
 
 class UserLogin(APIView):
+    
+    permission_classes = [AllowAny]
     def post(self, request):
         conn = get_db_connection()
         
@@ -117,3 +122,28 @@ class UserLogin(APIView):
         return Response({"response":f"Login successful",'user': {'id': user[0], 'username': user_name},"access_token":f"{access_token}","refresh_token":f"{refresh_token}"})
 
         
+class ValidateToken(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        auth_header = get_authorization_header(request).decode("utf-8")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise ValidationError("No token provided")
+
+        token = auth_header.split(" ")[1]
+
+        try:
+            payload = extractToken(token)
+            # Optional: check if token is expired
+            expiration = datetime.fromisoformat(payload.get("expiration"))
+            if expiration < datetime.now(tz=timezone.utc):
+                raise ValidationError("Token expired")
+
+            return Response({"valid": True, "user_id": payload["user_id"], "user_name": payload["user_name"]})
+
+        except jwt.ExpiredSignatureError:
+            raise ValidationError("Token expired")
+        except jwt.InvalidTokenError:
+            raise ValidationError("Invalid token")
+        except Exception as e:
+            raise APIException(f"Token validation failed: {str(e)}")

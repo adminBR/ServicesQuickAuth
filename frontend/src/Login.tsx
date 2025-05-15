@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { loginUser } from "./api/axios"; // adjust path if needed
+import { isAuthenticated } from "./utils/auth";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -8,13 +10,26 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const navigate = useNavigate();
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    console.log("Login attempted with:", { email, password, rememberMe });
-    // In a real app, you would handle authentication here
+    try {
+      await loginUser(email, password);
+      navigate("/");
+    } catch (err) {
+      alert(`Login falhou. Verifique suas credenciais.${err}`);
+      console.error("Login error:", err);
+    }
   };
 
-  const navigate = useNavigate();
+  useEffect(() => {
+    const checkLogin = async () => {
+      const loggedIn = await isAuthenticated();
+      if (loggedIn) navigate("/");
+    };
+    checkLogin();
+  }, [navigate]); // add dependency to avoid infinite loop
 
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-green-50 to-emerald-100">
@@ -23,7 +38,7 @@ export default function LoginPage() {
           <div className="mx-auto h-16 w-16 bg-green-600 rounded-full flex items-center justify-center mb-4">
             <Lock className="h-8 w-8 text-white" />
           </div>
-          <h2 className="text-3xl font-bold text-gray-800">Lulu sites</h2>
+          <h2 className="text-3xl font-bold text-gray-800">Serviços Samur</h2>
           <p className="text-gray-500 mt-2">
             Insira as credenciais para acessar
           </p>
@@ -123,7 +138,6 @@ export default function LoginPage() {
 
           <div>
             <button
-              onClick={() => navigate("/dashboard")}
               type="submit"
               className="w-full flex justify-center py-2 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors duration-200"
             >
