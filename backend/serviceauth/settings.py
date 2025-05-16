@@ -145,3 +145,12 @@ SIMPLE_JWT = {
     'ALGORITHM': 'HS256',
     'SIGNING_KEY': SECRET_KEY,
 }
+
+
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+STATIC_URL = '/static/'
+STATICFILES_DIRS = [ BASE_DIR / 'static' ]  # For dev
+STATIC_ROOT = BASE_DIR / 'staticfiles'      # For production (collectstatic target)

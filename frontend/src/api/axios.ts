@@ -1,13 +1,13 @@
 // api/axios.ts
 import axios from "axios";
 
-const API_BASE_URL = "http://192.168.1.7:8000"; // Change to your backend URL
+const API_BASE_URL = "http://192.168.1.7:8000";
 
 // Create an Axios instance
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
-    "Content-Type": "multipart/form-data",
+    "Content-Type": "application/json",
   },
 });
 
@@ -59,16 +59,13 @@ api.interceptors.response.use(
   }
 );
 
-export const registerUser = async (user_name: string, user_pass: string) => {
-  const res = await api.post("/register", { user_name, user_pass });
-  return res.data;
-};
-
 export const loginUser = async (user_name: string, user_pass: string) => {
-  const formdata = new FormData();
-  formdata.append("user_name", user_name);
-  formdata.append("user_pass", user_pass);
-  const res = await api.post("api/v1/users/login/", formdata);
+  const body = {
+    user_name: user_name,
+    user_pass: user_pass,
+  };
+  console.log(body);
+  const res = await api.post("api/v1/users/login/", body);
 
   localStorage.setItem("access_token", res.data.access_token);
   localStorage.setItem("refresh_token", res.data.refresh_token);
@@ -80,7 +77,7 @@ export const validateToken = async () => {
   try {
     const res = await api.get("api/v1/users/validate");
     return res.data; // { valid: true, user_id, user_name }
-  } catch (err) {
+  } catch {
     return { valid: false };
   }
 };

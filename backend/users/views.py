@@ -5,6 +5,8 @@ from rest_framework.exceptions import ValidationError,APIException
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.permissions import AllowAny
 from rest_framework.authentication import get_authorization_header
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 
 
 from .serializers import SumInputSerializer
@@ -93,9 +95,11 @@ class UserRegister(APIView):
         conn.commit()
         return Response({'response':f"User: {user_name} has been successfully registered"})
 
+@method_decorator(csrf_exempt, name='dispatch')
 class UserLogin(APIView):
-    
+    authentication_classes = []  # Important!
     permission_classes = [AllowAny]
+    
     def post(self, request):
         conn = get_db_connection()
         
@@ -109,15 +113,19 @@ class UserLogin(APIView):
             
         user_name = request.data.get('user_name').lower()
         user_pass = request.data.get('user_pass').lower()
+        print(user_name,user_pass)
             
         #---credentials validation---
-        cur.execute("""select usr_id from usr_info where usr_login = %s and usr_password = %s""",(user_name,user_pass,))
-        user = cur.fetchone()
+        try:
+            cur.execute("""select usr_id from usr_info where usr_login = %s and usr_password = %s""",(user_name,user_pass,))
+            user = cur.fetchone()
+        except psycopg2.Error as e:
+            raise APIException('Database query error!')
         print(user[0])
         if not user:
             raise ValidationError(f"User not found or invalid credentials.")
         
-        access_token = createToken(user[0],user_name,1)  
+        access_token = createToken(user[0],user_name,1) 
         refresh_token = createToken(user[0],user_name,90)
         return Response({"response":f"Login successful",'user': {'id': user[0], 'username': user_name},"access_token":f"{access_token}","refresh_token":f"{refresh_token}"})
 
