@@ -8,7 +8,6 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
 
   const navigate = useNavigate();
 
@@ -26,7 +25,11 @@ export default function LoginPage() {
   useEffect(() => {
     const checkLogin = async () => {
       const loggedIn = await isAuthenticated();
-      if (loggedIn) navigate("/");
+      console.log(loggedIn);
+      if (loggedIn) {
+        console.log("navigating...");
+        navigate("/");
+      }
     };
     checkLogin();
   }, [navigate]); // add dependency to avoid infinite loop
@@ -108,34 +111,6 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <input
-                id="remember-me"
-                name="remember-me"
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
-              />
-              <label
-                htmlFor="remember-me"
-                className="ml-2 block text-sm text-gray-700"
-              >
-                Manter conectado
-              </label>
-            </div>
-            <div className="text-sm">
-              <a
-                onClick={() => alert("trate de lembrar então kkkkk")}
-                href="#"
-                className="font-medium text-green-600 hover:text-green-500"
-              >
-                Esqueceu a senha?
-              </a>
-            </div>
-          </div>
-
           <div>
             <button
               type="submit"
@@ -145,16 +120,6 @@ export default function LoginPage() {
             </button>
           </div>
         </form>
-
-        <p className="mt-8 text-center text-sm text-gray-500">
-          Não tem cadastro?{" "}
-          <a
-            href="#"
-            className="font-medium text-green-600 hover:text-green-500"
-          >
-            Então não devia estar aqui
-          </a>
-        </p>
       </div>
     </div>
   );

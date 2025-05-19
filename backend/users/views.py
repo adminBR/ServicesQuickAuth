@@ -5,8 +5,10 @@ from rest_framework.exceptions import ValidationError,APIException
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.permissions import AllowAny
 from rest_framework.authentication import get_authorization_header
+from rest_framework import status
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
+
 
 
 from .serializers import SumInputSerializer
@@ -132,26 +134,61 @@ class UserLogin(APIView):
         
 class ValidateToken(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     def get(self, request):
-        auth_header = get_authorization_header(request).decode("utf-8")
-        if not auth_header or not auth_header.startswith("Bearer "):
-            raise ValidationError("No token provided")
+        auth = get_authorization_header(request).decode()
+        if not auth.startswith("Bearer "):
+            return Response({"detail": "No token provided"}, 
+                            status=status.HTTP_401_UNAUTHORIZED)
 
-        token = auth_header.split(" ")[1]
-
+        token = auth.split()[1]
         try:
             payload = extractToken(token)
-            # Optional: check if token is expired
-            expiration = datetime.fromisoformat(payload.get("expiration"))
-            if expiration < datetime.now(tz=timezone.utc):
-                raise ValidationError("Token expired")
+            expiration = datetime.fromisoformat(payload["expiration"])
+            if expiration < datetime.now(timezone.utc):
+                return Response({"detail":"Token expired"},
+                                status=status.HTTP_401_UNAUTHORIZED)
 
-            return Response({"valid": True, "user_id": payload["user_id"], "user_name": payload["user_name"]})
+            return Response({"user_id": payload["user_id"],
+                             "user_name": payload["user_name"]},
+                            status=status.HTTP_200_OK)
+        except jwt.ExpiredSignatureError:
+            return Response({"detail":"Token expired"},
+                            status=status.HTTP_401_UNAUTHORIZED)
+        except jwt.InvalidTokenError:
+            return Response({"detail":"Invalid token"},
+                            status=status.HTTP_401_UNAUTHORIZED)
+        except Exception as e:
+            return Response({"detail": str(e)},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            
+class RefreshToken(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        refresh_token = request.data.get("refresh_token")
+        if not refresh_token:
+            return Response({"detail": "Refresh token is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            payload = extractToken(refresh_token)
+            expiration = datetime.fromisoformat(payload["expiration"])
+            if expiration < datetime.now(timezone.utc):
+                return Response({"detail": "Refresh token expired"}, status=status.HTTP_401_UNAUTHORIZED)
+
+            # Issue a new access token
+            new_access_token = createToken(payload["user_id"], payload["user_name"], 1)
+
+            return Response({
+                "access_token": new_access_token
+            }, status=status.HTTP_200_OK)
 
         except jwt.ExpiredSignatureError:
-            raise ValidationError("Token expired")
+            return Response({"detail": "Token expired"}, status=status.HTTP_401_UNAUTHORIZED)
         except jwt.InvalidTokenError:
-            raise ValidationError("Invalid token")
+            return Response({"detail": "Invalid token"}, status=status.HTTP_401_UNAUTHORIZED)
         except Exception as e:
-            raise APIException(f"Token validation failed: {str(e)}")
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

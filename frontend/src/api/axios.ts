@@ -1,7 +1,8 @@
 // api/axios.ts
 import axios from "axios";
 
-const API_BASE_URL = "http://192.168.1.7:8000";
+const API_BASE_URL = "http://192.168.1.64:5001";
+//const API_BASE_URL = "http://192.168.1.7:8000";
 
 // Create an Axios instance
 const api = axios.create({
@@ -38,7 +39,13 @@ api.interceptors.response.use(
 
       try {
         const refreshToken = getRefreshToken();
-        const res = await axios.post(`${API_BASE_URL}/refresh`, {
+        if (!refreshToken) {
+          localStorage.removeItem("access_token");
+          localStorage.removeItem("refresh_token");
+          window.location.href = "/login";
+          return Promise.reject(error);
+        }
+        const res = await axios.post(`${API_BASE_URL}api/token/refresh/`, {
           refresh_token: refreshToken,
         });
 
