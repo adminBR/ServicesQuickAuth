@@ -4,7 +4,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "80:80"
+      - "1111:80"
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -18,7 +18,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "1111:8000"
+      - "1112:8000"
     volumes:
       - ./backend:/app
     environment:
