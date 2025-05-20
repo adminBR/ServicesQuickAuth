@@ -3,6 +3,7 @@ import { Search, LogOut, Edit, Plus, X } from "lucide-react";
 
 import { useNavigate } from "react-router-dom";
 import { getServices, updateService, addService } from "./api/services";
+import { logoutUser } from "./api/axios";
 
 // Define interfaces for our data types
 interface ServiceType {
@@ -51,10 +52,15 @@ export default function Dashboard() {
       service.srv_ip.includes(searchTerm)
   );
 
-  const handleLogout = (): void => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    navigate("/login");
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      navigate("/login");
+    } catch (error) {
+      console.log(error);
+    }
   };
 
   // Function to handle service card click

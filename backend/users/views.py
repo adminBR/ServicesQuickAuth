@@ -139,6 +139,12 @@ class UserLogin(APIView):
             path="/"
         )
         return resp
+    
+class UserLogout(APIView):
+    def get(self,request):
+        response = Response({'message': 'Logged out'})
+        response.delete_cookie('token')  # This must match the cookie name you set
+        return response
 
         
 class ValidateToken(APIView):
@@ -147,10 +153,10 @@ class ValidateToken(APIView):
 
     def get(self, request):
         auth = get_authorization_header(request).decode()
-        print(request.META)
+        #print(request.META)
         print(request.META.get('HTTP_AUTHORIZATION'))
-        print(request.META.get('authorization'))
-        print(request.data)
+        #print(request.META.get('authorization'))
+        #print(request.data)
         if not auth.startswith("Bearer "):
             return Response({"detail": "No token provided"}, 
                             status=status.HTTP_401_UNAUTHORIZED)

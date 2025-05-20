@@ -90,4 +90,13 @@ export const validateToken = async () => {
   }
 };
 
+export const logoutUser = async () => {
+  try {
+    await api.get("api/v1/users/logout");
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export default api;
