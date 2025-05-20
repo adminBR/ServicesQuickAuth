@@ -129,7 +129,16 @@ class UserLogin(APIView):
         
         access_token = createToken(user[0],user_name,1) 
         refresh_token = createToken(user[0],user_name,90)
-        return Response({"response":f"Login successful",'user': {'id': user[0], 'username': user_name},"access_token":f"{access_token}","refresh_token":f"{refresh_token}"})
+        resp = Response({"response":f"Login successful",'user': {'id': user[0], 'username': user_name},"access_token":f"{access_token}","refresh_token":f"{refresh_token}"})
+        resp.set_cookie(
+            key="token",
+            value=access_token,
+            httponly=True,
+            secure=False,     # set True if you’re serving over HTTPS
+            samesite="Strict",
+            path="/"
+        )
+        return resp
 
         
 class ValidateToken(APIView):
@@ -138,6 +147,10 @@ class ValidateToken(APIView):
 
     def get(self, request):
         auth = get_authorization_header(request).decode()
+        print(request.META)
+        print(request.META.get('HTTP_AUTHORIZATION'))
+        print(request.META.get('authorization'))
+        print(request.data)
         if not auth.startswith("Bearer "):
             return Response({"detail": "No token provided"}, 
                             status=status.HTTP_401_UNAUTHORIZED)
