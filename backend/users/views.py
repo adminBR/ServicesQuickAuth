@@ -70,75 +70,95 @@ def get_db_connection():
         raise APIException(f"Database conection error: {e}")
     
 class UserRegister(APIView):
-    def post(self,request):
+    def post(self, request):
         conn = get_db_connection()
         cur = conn.cursor()
         conn.autocommit = False
-        
-        #---data validation---
-        if not request.data.get('user_name'):
-            raise ValidationError("Missing 'user_name' field.")
-        if not request.data.get('user_pass'):
-            raise ValidationError("Missing 'user_pass' field.")
-        else:
-            validate_password(request.data.get('user_pass'))
-            
-        user_name = request.data.get('user_name').lower()
-        user_pass = request.data.get('user_pass').lower()
-        
-        #---credentials validation---
-        cur.execute("""select usr_id from usr_info where usr_login = %s""",(user_name,))
-        if cur.fetchone():
-            raise ValidationError(f"Username {user_name} already in use.")
-        
-        #---user creation---
-        cur.execute("""insert into usr_info (usr_login,usr_password,usr_access,usr_admin,created_at) values (%s,%s,%s,%s,%s)""",(user_name,user_pass,"0",False,datetime.now(tz=timezone.utc),))
-        
-        conn.commit()
-        return Response({'response':f"User: {user_name} has been successfully registered"})
+
+        try:
+            # --- data validation ---
+            if not request.data.get('user_name'):
+                raise ValidationError("Missing 'user_name' field.")
+            if not request.data.get('user_pass'):
+                raise ValidationError("Missing 'user_pass' field.")
+            else:
+                validate_password(request.data.get('user_pass'))
+
+            user_name = request.data.get('user_name').lower()
+            user_pass = request.data.get('user_pass').lower()
+
+            # --- credentials validation ---
+            cur.execute("""SELECT usr_id FROM usr_info WHERE usr_login = %s""", (user_name,))
+            if cur.fetchone():
+                raise ValidationError(f"Username {user_name} already in use.")
+
+            # --- user creation ---
+            cur.execute("""
+                INSERT INTO usr_info (usr_login, usr_password, usr_access, usr_admin, created_at) 
+                VALUES (%s, %s, %s, %s, %s)
+            """, (user_name, user_pass, "0", False, datetime.now(tz=timezone.utc)))
+
+            conn.commit()
+            return Response({'response': f"User: {user_name} has been successfully registered"})
+        finally:
+            cur.close()
+            conn.close()
+
 
 @method_decorator(csrf_exempt, name='dispatch')
 class UserLogin(APIView):
-    authentication_classes = []  # Important!
+    authentication_classes = []
     permission_classes = [AllowAny]
-    
+
     def post(self, request):
         conn = get_db_connection()
-        
         cur = conn.cursor()
-        if not request.data.get('user_name'):
-            raise ValidationError("Missing 'user_name' field.")
-        if not request.data.get('user_pass'):
-            raise ValidationError("Missing 'user_pass' field.")
-        else:
-            validate_password(request.data.get('user_pass').lower())
-            
-        user_name = request.data.get('user_name').lower()
-        user_pass = request.data.get('user_pass').lower()
-        print(user_name,user_pass)
-            
-        #---credentials validation---
+
         try:
-            cur.execute("""select usr_id from usr_info where usr_login = %s and usr_password = %s""",(user_name,user_pass,))
-            user = cur.fetchone()
-        except psycopg2.Error as e:
-            raise APIException('Database query error!')
-        print(user[0])
-        if not user:
-            raise ValidationError(f"User not found or invalid credentials.")
-        
-        access_token = createToken(user[0],user_name,1) 
-        refresh_token = createToken(user[0],user_name,90)
-        resp = Response({"response":f"Login successful",'user': {'id': user[0], 'username': user_name},"access_token":f"{access_token}","refresh_token":f"{refresh_token}"})
-        resp.set_cookie(
-            key="token",
-            value=access_token,
-            httponly=True,
-            secure=False,     # set True if you’re serving over HTTPS
-            samesite="Strict",
-            path="/"
-        )
-        return resp
+            if not request.data.get('user_name'):
+                raise ValidationError("Missing 'user_name' field.")
+            if not request.data.get('user_pass'):
+                raise ValidationError("Missing 'user_pass' field.")
+            else:
+                validate_password(request.data.get('user_pass').lower())
+
+            user_name = request.data.get('user_name').lower()
+            user_pass = request.data.get('user_pass').lower()
+
+            try:
+                cur.execute("""
+                    SELECT usr_id FROM usr_info 
+                    WHERE usr_login = %s AND usr_password = %s
+                """, (user_name, user_pass,))
+                user = cur.fetchone()
+            except psycopg2.Error:
+                raise APIException('Database query error!')
+
+            if not user:
+                raise ValidationError("User not found or invalid credentials.")
+
+            access_token = createToken(user[0], user_name, 1)
+            refresh_token = createToken(user[0], user_name, 90)
+
+            resp = Response({
+                "response": "Login successful",
+                "user": {"id": user[0], "username": user_name},
+                "access_token": access_token,
+                "refresh_token": refresh_token
+            })
+            resp.set_cookie(
+                key="token",
+                value=access_token,
+                httponly=True,
+                secure=False,
+                samesite="Strict",
+                path="/"
+            )
+            return resp
+        finally:
+            cur.close()
+            conn.close()
+
     
 class UserLogout(APIView):
     def get(self,request):

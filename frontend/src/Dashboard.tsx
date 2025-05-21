@@ -4,6 +4,7 @@ import { Search, LogOut, Edit, Plus, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { getServices, updateService, addService } from "./api/services";
 import { logoutUser } from "./api/axios";
+import { Navbar } from "./components/Navbar";
 
 // Define interfaces for our data types
 interface ServiceType {
@@ -42,6 +43,8 @@ export default function Dashboard() {
     srv_ip: "",
     srv_desc: "",
   });
+
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
   // Search functionality
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -122,64 +125,32 @@ export default function Dashboard() {
   }, []); // Added dependency array to prevent infinite re-renders
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="flex flex-col min-h-screen overflow-x-hidden bg-gradient-to-b from-[#2e7675] to-[#2e7675]">
       {/* Header */}
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex">
-              <div className="flex-shrink-0 flex items-center">
-                <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center mr-2">
-                  <span className="text-white font-bold">S</span>
-                </div>
-                <span className="text-xl font-bold text-gray-800">
-                  Services Hub
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center">
-              <div className="relative mx-4">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Search className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  type="text"
-                  placeholder="Search services..."
-                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-
-              <div className="ml-3 relative">
-                <div className="flex items-center">
-                  <button className="ml-2 p-1 rounded-full text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
-                    <LogOut className="h-5 w-5" onClick={handleLogout} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+      <Navbar
+        handleLogout={handleLogout}
+        setSearchTerm={setSearchTerm}
+        searchTerm={searchTerm}
+      />
 
       {/* Main content */}
-      <main className="py-6">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <main className="flex-1 flex flex-col p-2 overflow-y-auto bg-[#e7e7e7] rounded-md m-2">
+        <div className=" mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
-            <button
-              onClick={() => setAddModalOpen(true)}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Service
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => setAddModalOpen(true)}
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Service
+              </button>
+            )}
           </div>
 
           {/* Services grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
             {filteredServices.map((service) => (
               <div
                 key={service.srv_ip}
@@ -201,12 +172,14 @@ export default function Dashboard() {
                     >
                       {service.srv_name}
                     </h3>
-                    <button
-                      onClick={(e) => handleEditClick(e, service)}
-                      className="p-1 rounded-full text-gray-400 hover:text-green-600 focus:outline-none"
-                    >
-                      <Edit className="h-4 w-4" />
-                    </button>
+                    {isAdmin && (
+                      <button
+                        onClick={(e) => handleEditClick(e, service)}
+                        className="p-1 rounded-full text-gray-400 hover:text-green-600 focus:outline-none"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
                   <p
                     className="mt-1 text-sm text-gray-500"

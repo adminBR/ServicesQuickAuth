@@ -11,6 +11,7 @@ from datetime import datetime,timedelta,timezone
 from .serializers import addServiceSerializer,updateServiceSerializer
 
 from rest_framework.permissions import IsAuthenticated
+#from .auth import JWTCustomAuth
 
 import re
 import json
@@ -43,16 +44,27 @@ class serviceManaging(APIView):
     
     permission_classes = [IsAuthenticated]
     
-    def get(self,request:Request):
+    def get(self, request: Request):
+        user_id = request.user.id
         conn = get_db_connection()
         cur = conn.cursor()
         
-        cur.execute("Select * from services_info")
-        result = cur.fetchall()
-        header = [desc[0] for desc in cur.description]
-        fullresult = [dict(zip(header, row)) for row in result]
-        
-        return Response({"message":"success","content":fullresult})
+        try:
+            cur.execute("SELECT usr_access FROM usr_info ui WHERE ui.usr_id = %s", (user_id,))
+            result = cur.fetchone()
+            user_services = result[0]
+
+            cur.execute(f"SELECT * FROM services_info si WHERE si.srv_id IN ({user_services})")
+            result = cur.fetchall()
+
+            header = [desc[0] for desc in cur.description]
+            fullresult = [dict(zip(header, row)) for row in result]
+
+            return Response({"message": "success", "content": fullresult})
+        finally:
+            cur.close()
+            conn.close()
+
         
     def post(self,request:Request):
         conn = get_db_connection()
@@ -73,7 +85,9 @@ class serviceManaging(APIView):
         except psycopg2.Error as e:
             conn.rollback()
             raise APIException(f"Insert failed. {e}")
-        
+        finally:
+            cur.close()
+            conn.close()
 
         return Response({"message":"Success","id":result[0]})
     
@@ -120,6 +134,9 @@ class serviceManaging(APIView):
         except psycopg2.Error as e:
             conn.rollback()
             raise APIException(f"Insert failed. {e}")
+        finally:
+            cur.close()
+            conn.close()
         
 
         return Response({"message":"Success","id":item['srv_id']})
