@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Search, LogOut, Edit, Plus, X } from "lucide-react";
+import { Search, Edit, Plus, X } from "lucide-react";
 
 import { useNavigate } from "react-router-dom";
 import { getServices, updateService, addService } from "./api/services";
@@ -19,15 +19,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   // Sample data for the service cards
-  const [services, setServices] = useState<ServiceType[]>([
-    {
-      srv_id: 1,
-      srv_image: "File Server",
-      srv_name: "Shared network storage for documents and media",
-      srv_ip: "192.168.1.100",
-      srv_desc: "/api/placeholder/200/150",
-    },
-  ]);
+  const [services, setServices] = useState<ServiceType[]>([]);
 
   // State for managing edit modal
   const [editModalOpen, setEditModalOpen] = useState<boolean>(false);
@@ -120,6 +112,7 @@ export default function Dashboard() {
       } catch (err: unknown) {
         console.log("CallError", err);
       }
+      setIsAdmin(localStorage.getItem("isAdmin") === "true" ? true : false);
     };
     populateServices();
   }, []); // Added dependency array to prevent infinite re-renders
@@ -134,10 +127,12 @@ export default function Dashboard() {
       />
 
       {/* Main content */}
-      <main className="flex-1 flex flex-col p-2 overflow-y-auto bg-[#e7e7e7] rounded-md m-2">
-        <div className=" mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
+      <main className="flex-1 flex flex-col p-2 overflow-y-auto  bg-[#e7e7e7] rounded-md m-2">
+        <div className="mx-auto px-4 sm:px-6 lg:px-8 w-full">
+          <div className="flex justify-between items-center mb-6 w-full">
+            <h1 className="text-2xl font-semibold pt-3 text-gray-500">
+              Serviços ativos
+            </h1>
             {isAdmin && (
               <button
                 onClick={() => setAddModalOpen(true)}
@@ -149,65 +144,70 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Services grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-            {filteredServices.map((service) => (
-              <div
-                key={service.srv_ip}
-                className="bg-white overflow-hidden shadow rounded-lg cursor-pointer hover:shadow-md transform hover:-translate-y-1 transition-transform duration-300"
-              >
-                <div className="aspect-w-16 aspect-h-9 bg-gray-200">
-                  <img
-                    src={service.srv_image}
-                    alt={service.srv_name}
-                    className="w-full h-48 object-cover"
-                    onClick={() => handleServiceClick(service.srv_ip)}
-                  />
-                </div>
-                <div className="px-4 py-4">
-                  <div className="flex justify-between items-start">
-                    <h3
-                      className="text-lg font-medium text-gray-900"
-                      onClick={() => handleServiceClick(service.srv_ip)}
-                    >
-                      {service.srv_name}
-                    </h3>
-                    {isAdmin && (
-                      <button
-                        onClick={(e) => handleEditClick(e, service)}
-                        className="p-1 rounded-full text-gray-400 hover:text-green-600 focus:outline-none"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                  <p
-                    className="mt-1 text-sm text-gray-500"
-                    onClick={() => handleServiceClick(service.srv_ip)}
-                  >
-                    {service.srv_desc}
-                  </p>
+          <div className="min-h-[300px] w-full">
+            {filteredServices.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                {filteredServices.map((service) => (
                   <div
-                    className="mt-2 flex items-center"
-                    onClick={() => handleServiceClick(service.srv_ip)}
+                    key={service.srv_ip}
+                    className="bg-white border overflow-hidden shadow rounded-lg cursor-pointer hover:shadow-md transform hover:-translate-y-1 transition-transform duration-300"
                   >
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      {service.srv_ip}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+                    <div className="aspect-w-16 aspect-h-9 bg-gray-200">
+                      <img
+                        src={service.srv_image}
+                        alt={service.srv_name}
+                        className="w-full h-48 object-cover"
+                        onClick={() => handleServiceClick(service.srv_ip)}
+                      />
+                    </div>
+                    <div className="px-4 py-4">
+                      <div className="flex justify-between items-start">
+                        <h3
+                          className="text-lg font-medium text-gray-900"
+                          onClick={() => handleServiceClick(service.srv_ip)}
+                        >
+                          {service.srv_name}
+                        </h3>
 
-          {/* Empty state */}
-          {filteredServices.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-gray-500">
-                No services found matching your search.
-              </p>
-            </div>
-          )}
+                        {isAdmin && (
+                          <button
+                            onClick={(e) => handleEditClick(e, service)}
+                            className="p-1 rounded-full text-gray-400 hover:text-green-600 focus:outline-none"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                      <div
+                        className="mt-2 flex items-center"
+                        onClick={() => handleServiceClick(service.srv_ip)}
+                      >
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          {service.srv_ip}
+                        </span>
+                      </div>
+                      <p
+                        className="mt-1 text-sm text-gray-500"
+                        onClick={() => handleServiceClick(service.srv_ip)}
+                      >
+                        {service.srv_desc}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="w-full flex flex-col items-center justify-center border border-dashed rounded-lg py-16 px-4  text-center">
+                <Search className="w-10 h-10 text-gray-400 mb-4" />
+                <h2 className="text-lg font-semibold text-gray-700 mb-2">
+                  Nenhum serviço encontrado
+                </h2>
+                <p className="text-sm text-gray-500">
+                  Verifique sua internet ou entre em contanto com o suporte
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </main>
 

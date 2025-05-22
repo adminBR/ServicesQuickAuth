@@ -127,7 +127,7 @@ class UserLogin(APIView):
 
             try:
                 cur.execute("""
-                    SELECT usr_id FROM usr_info 
+                    SELECT usr_id,usr_admin FROM usr_info 
                     WHERE usr_login = %s AND usr_password = %s
                 """, (user_name, user_pass,))
                 user = cur.fetchone()
@@ -144,7 +144,8 @@ class UserLogin(APIView):
                 "response": "Login successful",
                 "user": {"id": user[0], "username": user_name},
                 "access_token": access_token,
-                "refresh_token": refresh_token
+                "refresh_token": refresh_token,
+                "isAdmin":user[1]
             })
             resp.set_cookie(
                 key="token",
@@ -173,10 +174,8 @@ class ValidateToken(APIView):
 
     def get(self, request):
         auth = get_authorization_header(request).decode()
-        #print(request.META)
-        print(request.META.get('HTTP_AUTHORIZATION'))
-        #print(request.META.get('authorization'))
-        #print(request.data)
+        service_id = request.GET.get("service_id")
+        
         if not auth.startswith("Bearer "):
             return Response({"detail": "No token provided"}, 
                             status=status.HTTP_401_UNAUTHORIZED)
@@ -188,6 +187,26 @@ class ValidateToken(APIView):
             if expiration < datetime.now(timezone.utc):
                 return Response({"detail":"Token expired"},
                                 status=status.HTTP_401_UNAUTHORIZED)
+                
+            user_id = payload["user_id"]
+
+            if service_id:
+                # check DB access
+                conn = get_db_connection()
+                cur = conn.cursor()
+                try:
+                    cur.execute("SELECT usr_access FROM usr_info WHERE usr_id = %s", (user_id,))
+                    result = cur.fetchone()
+                    if not result:
+                        return Response({"detail": "User not found"}, status=status.HTTP_401_UNAUTHORIZED)
+
+                    allowed_services = result[0].split(",")
+                    if service_id not in allowed_services:
+                        return Response({"detail": "Access denied to this service"},
+                                        status=status.HTTP_401_UNAUTHORIZED)
+                finally:
+                    cur.close()
+                    conn.close()
 
             return Response({"user_id": payload["user_id"],
                              "user_name": payload["user_name"]},
