@@ -174,8 +174,7 @@ class ValidateToken(APIView):
 
     def get(self, request):
         auth = get_authorization_header(request).decode()
-        service_id = request.GET.get("service_id")
-        
+        service_id = request.headers.get("X-Service-ID")
         if not auth.startswith("Bearer "):
             return Response({"detail": "No token provided"}, 
                             status=status.HTTP_401_UNAUTHORIZED)
