@@ -1,0 +1,78 @@
+how to change the service to the gateway
+1- add a name to the apiendpoint
+like before it was:
+0.0.0.0:1111/getinfo
+now will be:
+0.0.0.0:1111/api_of_something/getinfo
+
+2-change the front and the backend on docker compose filefrontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:5050:80" ## frontend add the 127.0.0.1 to lock on localhost
+    networks:
+      - app-network
+    restart: always
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+	  ##backend remove the ports to lock on inside connection
+    environment:
+      - FLASK_ENV=production
+    networks:
+      - app-network
+    restart: always
+	
+3- make sure default.conf is redirecting the calls to /api to the backend
+server {
+    listen 80;
+
+    location / {
+        root   /usr/share/nginx/html;
+        index  index.html index.htm;
+        try_files $uri /index.html;
+    }
+
+    location /api/ {##here
+        proxy_pass http://backend:8000/; ##and here
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 300s;
+    }
+}
+
+4- change frontend to call the api properly
+("/api/prescricao_api/getmaxpresc");
+if the endpoint you want is the new "api_of_something/getinfo" then you call "api/api_of_something/getinfo"
+
+5-add the entry in the nginx config
+  location /painel_prescricao/ {
+    set $service_id 12;
+    auth_request /_auth;
+    proxy_pass http://127.0.0.1:5050/;
+    proxy_http_version 1.1;
+  
+    # Fix asset loading by rewriting URLs (very basic)
+    sub_filter_types text/html;
+    sub_filter_once off;
+    sub_filter '/assets/' '/painel_prescricao/assets/';
+  }
+  
+  location /api/prescricao_api/ { ##the root of the api
+    set $service_id 12; 
+    auth_request /_auth; 
+    proxy_pass http://127.0.0.1:5050; 
+                                      
+  
+    proxy_set_header Host $host; 
+                                 
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
