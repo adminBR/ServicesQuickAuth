@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
-import { Eye, EyeOff, Lock, Mail } from "lucide-react";
+import { Eye, EyeOff, Lock, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { loginUser } from "./api/axios"; // adjust path if needed
 import { isAuthenticated } from "./utils/auth";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
@@ -14,7 +14,7 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     try {
-      await loginUser(email, password);
+      await loginUser(username, password);
       navigate("/");
     } catch (err) {
       alert(`Login falhou. Verifique suas credenciais.${err}`);
@@ -50,25 +50,24 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label
-              htmlFor="email"
+              htmlFor="username"
               className="block text-sm font-medium text-gray-700 mb-1"
             >
-              Email
+              Usuário
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Mail className="h-5 w-5 text-gray-400" />
+                <User className="h-5 w-5 text-gray-400" />
               </div>
               <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
+                id="username"
+                name="username"
+                type="text"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                placeholder="you@example.com"
+                placeholder="seu_usuario"
               />
             </div>
           </div>
@@ -78,7 +77,7 @@ export default function LoginPage() {
               htmlFor="password"
               className="block text-sm font-medium text-gray-700 mb-1"
             >
-              Password
+              Senha
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
