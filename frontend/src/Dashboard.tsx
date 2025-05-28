@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { getServices, updateService, addService } from "./api/services";
 import { logoutUser } from "./api/axios";
 import { Navbar } from "./components/Navbar";
+import UserManager from "./components/UserManager";
 
 // Define interfaces for our data types
 interface ServiceType {
@@ -29,6 +30,7 @@ export default function Dashboard() {
 
   // State for managing add modal
   const [addModalOpen, setAddModalOpen] = useState<boolean>(false);
+  const [userManager, setUserManager] = useState<boolean>(false);
   const [newService, setNewService] = useState<Omit<ServiceType, "srv_id">>({
     srv_image: "/api/placeholder/200/150",
     srv_name: "",
@@ -117,6 +119,10 @@ export default function Dashboard() {
     populateServices();
   }, []); // Added dependency array to prevent infinite re-renders
 
+  const handleCloseUserManager = () => {
+    setUserManager(false);
+  };
+
   return (
     <div className="flex flex-col min-h-screen overflow-x-hidden bg-gradient-to-b from-[#2e7675] to-[#2e7675]">
       {/* Header */}
@@ -134,13 +140,22 @@ export default function Dashboard() {
               Serviços ativos
             </h1>
             {isAdmin && (
-              <button
-                onClick={() => setAddModalOpen(true)}
-                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Service
-              </button>
+              <div>
+                <button
+                  onClick={() => setAddModalOpen(true)}
+                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Service
+                </button>
+                <button
+                  onClick={() => setUserManager(!userManager)}
+                  className="inline-flex items-center ml-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Gerenciar usuarios
+                </button>
+              </div>
             )}
           </div>
 
@@ -313,7 +328,10 @@ export default function Dashboard() {
         </div>
       )}
 
+      {userManager && <UserManager onClose={handleCloseUserManager} />}
+
       {/* Add Modal */}
+
       {addModalOpen && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center">
           <div className="relative bg-white rounded-lg shadow-lg max-w-md w-full">

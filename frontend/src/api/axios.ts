@@ -1,8 +1,35 @@
 // api/axios.ts
 import axios from "axios";
 
+// --- Types for User Management ---
+export interface User {
+  id: number;
+  username: string;
+  is_admin: boolean;
+  access: string;
+  created_at?: string; // Optional, as it might not always be needed/returned
+}
+
+export interface NewUserPayload {
+  user_name: string;
+  user_pass: string;
+  is_admin?: boolean;
+  access?: string;
+}
+
+export interface UpdateUserPayload {
+  user_pass?: string; // Password is optional on update
+  is_admin?: boolean;
+  access?: string;
+}
+
+export interface AdminService {
+  srv_id: number;
+  srv_name: string;
+  srv_desc?: string;
+}
+
 const API_BASE_URL = "http://192.168.1.64";
-//const API_BASE_URL = "http://192.168.1.64:1112";
 //const API_BASE_URL = "http://192.168.1.7:8000";
 
 // Create an Axios instance
@@ -98,6 +125,45 @@ export const logoutUser = async () => {
   } catch {
     return false;
   }
+};
+
+// --- Admin User Management API Calls ---
+
+export const getAllUsersAdmin = async (): Promise<User[]> => {
+  const res = await api.get("api/v1/users/admin/"); // Adjust path if needed
+  return res.data;
+};
+
+export const createUserAdmin = async (
+  userData: NewUserPayload
+): Promise<{ response: string; user: User }> => {
+  const res = await api.post("api/v1/users/admin/", userData); // Adjust path
+  return res.data;
+};
+
+export const getUserDetailsAdmin = async (userId: number): Promise<User> => {
+  const res = await api.get(`api/v1/users/admin/${userId}/`); // Adjust path
+  return res.data;
+};
+
+export const updateUserAdmin = async (
+  userId: number,
+  userData: UpdateUserPayload
+): Promise<{ response: string; user: User }> => {
+  const res = await api.put(`api/v1/users/admin/${userId}/`, userData); // Adjust path
+  return res.data;
+};
+
+export const deleteUserAdmin = async (
+  userId: number
+): Promise<{ response: string }> => {
+  const res = await api.delete(`api/v1/users/admin/${userId}/`); // Adjust path
+  return res.data;
+};
+
+export const getAllServicesForAdmin = async (): Promise<AdminService[]> => {
+  const res = await api.get("api/v1/users/admin/services/all/"); // Adjust path to match your Django urls.py
+  return res.data;
 };
 
 export default api;
