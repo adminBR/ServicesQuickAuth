@@ -164,6 +164,27 @@ class serviceManaging(APIView):
 class ImageUploadView(APIView):
     permission_classes = [IsAuthenticated] # Or adjust as needed
     parser_classes = (MultiPartParser, FileUploadParser) # To handle file uploads
+    
+    def get(self, request):
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT img_id, img_name, img_path, created_at FROM img_info ORDER BY img_id")
+            users_data = cur.fetchall()
+            users_list = [
+                {
+                    "id": row[0], 
+                    "img_name": row[1], 
+                    "img_path": row[2], 
+                    "created_at": row[3].isoformat() if row[3] else None
+                } for row in users_data
+            ]
+            return Response(users_list, status=status.HTTP_200_OK)
+        except psycopg2.Error as e:
+            raise APIException(f"Database query error: {e}")
+        finally:
+            cur.close()
+            conn.close()
 
     def post(self, request: Request, *args, **kwargs):
         if 'file' not in request.data:
@@ -193,6 +214,26 @@ class ImageUploadView(APIView):
         
         filename = fs.save(uploaded_file.name, uploaded_file)
         file_url = fs.url(filename) # Generates the URL based on MEDIA_URL
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        conn.autocommit = False
+        try:
+            
+            cur.execute("""
+                INSERT INTO img_info (img_name, img_path, created_at)
+                VALUES (%s, %s, %s)
+            """, (filename, request.build_absolute_uri(file_url), datetime.now(tz=timezone.utc),))
+            conn.commit()
+        except psycopg2.Error as db_error:
+            conn.rollback()
+            raise APIException(f"Database error: {db_error}")
+        except ValidationError as ve:
+            conn.rollback()
+            raise ve
+        finally:
+            cur.close()
+            conn.close()
 
         return Response({
             "message": "File uploaded successfully",

@@ -140,8 +140,9 @@ class UserRegister(APIView):
             else:
                 validate_password(request.data.get('user_pass'))
 
-            user_name = request.data.get('user_name').lower()
-            user_pass = request.data.get('user_pass').lower()
+            user_name = request.data.get('user_name')
+            user_name = user_name.lower()
+            user_pass = request.data.get('user_pass')
 
             # --- credentials validation ---
             cur.execute("""SELECT usr_id FROM usr_info WHERE usr_login = %s""", (user_name,))
@@ -176,10 +177,11 @@ class UserLogin(APIView):
             if not request.data.get('user_pass'):
                 raise ValidationError("Missing 'user_pass' field.")
             else:
-                validate_password(request.data.get('user_pass').lower())
+                validate_password(request.data.get('user_pass'))
 
-            user_name = request.data.get('user_name').lower()
-            user_pass = request.data.get('user_pass').lower()
+            user_name = request.data.get('user_name')
+            user_name = user_name.lower()
+            user_pass = request.data.get('user_pass')
 
             try:
                 cur.execute("""
