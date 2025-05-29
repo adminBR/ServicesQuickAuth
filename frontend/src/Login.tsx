@@ -1,5 +1,12 @@
-import { useState, useEffect } from "react";
-import { Eye, EyeOff, Lock, User } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import {
+  Eye,
+  EyeOff,
+  Lock,
+  User,
+  AlertTriangle,
+  LoaderCircle,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { loginUser } from "./api/axios"; // adjust path if needed
 import { isAuthenticated } from "./utils/auth";
@@ -8,18 +15,32 @@ export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    setErrorMessage(null);
     e.preventDefault();
-    try {
-      await loginUser(username, password);
-      navigate("/");
-    } catch (err) {
-      alert(`Login falhou. Verifique suas credenciais.${err}`);
-      console.error("Login error:", err);
+    setIsLoading(true);
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
     }
+    timeoutRef.current = setTimeout(async () => {
+      try {
+        console.log("logged");
+        await loginUser(username, password);
+        navigate("/");
+      } catch (err) {
+        setErrorMessage("Usuário ou senha inválidos.");
+        console.error("Login error:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }, 1000); // 1000ms = 1 second
   };
 
   useEffect(() => {
@@ -60,6 +81,7 @@ export default function LoginPage() {
                 <User className="h-5 w-5 text-gray-400" />
               </div>
               <input
+                disabled={isLoading}
                 id="username"
                 name="username"
                 type="text"
@@ -84,6 +106,7 @@ export default function LoginPage() {
                 <Lock className="h-5 w-5 text-gray-400" />
               </div>
               <input
+                disabled={isLoading}
                 id="password"
                 name="password"
                 type={showPassword ? "text" : "password"}
@@ -96,6 +119,7 @@ export default function LoginPage() {
               />
               <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
                 <button
+                  disabled={isLoading}
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="text-gray-400 hover:text-gray-500 focus:outline-none"
@@ -110,12 +134,27 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {errorMessage && (
+            <div
+              className="flex items-center gap-2 pl-3 pr-4 py-2 border border-yellow-300 bg-yellow-50 text-yellow-800 rounded-lg text-sm"
+              role="alert"
+            >
+              <AlertTriangle className="h-5 w-5 text-yellow-500" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
           <div>
             <button
+              disabled={isLoading}
               type="submit"
               className="w-full flex justify-center py-2 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors duration-200"
             >
-              Entrar
+              {isLoading ? (
+                <LoaderCircle className="animate-spin w-5 h-5 text-white" />
+              ) : (
+                <p>Entrar</p>
+              )}
             </button>
           </div>
         </form>
