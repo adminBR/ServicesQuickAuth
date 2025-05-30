@@ -4,49 +4,21 @@ from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError,APIException
 from rest_framework.request import Request
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FileUploadParser # For file uploads
 
-import jwt
 import psycopg2
 from datetime import datetime,timedelta,timezone
 
 from .serializers import addServiceSerializer,updateServiceSerializer
+from utils.database import get_db_connection
+from utils.jwt import get_admin_user_from_token
 
-from rest_framework.permissions import IsAuthenticated
-#from .auth import JWTCustomAuth
-from rest_framework.parsers import MultiPartParser, FileUploadParser # For file uploads
-from django.conf import settings
-from django.core.files.storage import FileSystemStorage
-import os # Make sure to import os
-
-import re
-import json
-
-DB_HOST = '192.168.1.64'
-DB_NAME = 'auth_service'
-DB_USER = 'postgres'
-DB_PASSWORD = 'postgres'
+import os
+import base64
 
 
-# Password validation settings
-MIN_PASSWORD_LENGTH = 6
-PASSWORD_REGEX = re.compile(r'^(?=.*[A-Za-z])(?=.*\d).+$')  # At least one letter and one number
-
-
-def get_db_connection():
-    try:
-        connection = psycopg2.connect(
-            host=DB_HOST,
-            database=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD
-        )
-        return connection
-    except psycopg2.Error as e:
-        print(f"Database conection error: {e}")
-        raise APIException(f"Database conection error: {e}")
-
-class serviceManaging(APIView):
-    
+class ServicesManager(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request: Request):
@@ -161,7 +133,7 @@ class serviceManaging(APIView):
 
         return Response({"message":"Success","id":item['srv_id']})
     
-class ImageUploadView(APIView):
+class ImageManager(APIView):
     permission_classes = [IsAuthenticated] # Or adjust as needed
     parser_classes = (MultiPartParser, FileUploadParser) # To handle file uploads
     
@@ -169,13 +141,14 @@ class ImageUploadView(APIView):
         conn = get_db_connection()
         cur = conn.cursor()
         try:
-            cur.execute("SELECT img_id, img_name, img_path, created_at FROM img_info ORDER BY img_id")
+            cur.execute("SELECT img_id, img_name, img_data, created_at FROM img_info ORDER BY img_id")
             users_data = cur.fetchall()
             users_list = [
                 {
-                    "id": row[0], 
-                    "img_name": row[1], 
-                    "img_path": row[2], 
+                    "id": row[0],
+                    "img_name": row[1],
+                    # Option 1: Return as base64 string (warning: large size!)
+                    "img_base64": base64.b64encode(row[2]).decode('utf-8') if row[2] else None,
                     "created_at": row[3].isoformat() if row[3] else None
                 } for row in users_data
             ]
@@ -186,57 +159,40 @@ class ImageUploadView(APIView):
             cur.close()
             conn.close()
 
-    def post(self, request: Request, *args, **kwargs):
+    def post(self, request: Request):
+        try:
+            get_admin_user_from_token(request)
+        except APIException as e:
+            return Response({"detail": e.detail}, status=e.status_code)
+        
         if 'file' not in request.data:
             raise ValidationError({"detail": "No file provided."})
 
         uploaded_file = request.data['file']
-        
-        # Basic validation for file type (optional, can be more robust)
         allowed_extensions = ['.jpg', '.jpeg', '.png', '.gif']
         filename, file_extension = os.path.splitext(uploaded_file.name)
         if file_extension.lower() not in allowed_extensions:
             raise ValidationError({"detail": f"File type not allowed. Allowed types: {', '.join(allowed_extensions)}"})
 
-        # Ensure the media directory exists
-        if not os.path.exists(settings.MEDIA_ROOT):
-            os.makedirs(settings.MEDIA_ROOT)
-            
-        fs = FileSystemStorage(location=settings.MEDIA_ROOT) # Uses MEDIA_ROOT
-        
-        # Save the file
-        # You might want to sanitize the filename or generate a unique one
-        # to prevent overwrites or security issues.
-        # For example, using uuid:
-        # import uuid
-        # unique_filename = f"{uuid.uuid4()}{file_extension}"
-        # filename = fs.save(unique_filename, uploaded_file)
-        
-        filename = fs.save(uploaded_file.name, uploaded_file)
-        file_url = fs.url(filename) # Generates the URL based on MEDIA_URL
-        
+        file_bytes = uploaded_file.read()  # Read the file into bytes
+
         conn = get_db_connection()
         cur = conn.cursor()
         conn.autocommit = False
         try:
-            
             cur.execute("""
-                INSERT INTO img_info (img_name, img_path, created_at)
+                INSERT INTO img_info (img_name, img_data, created_at)
                 VALUES (%s, %s, %s)
-            """, (filename, request.build_absolute_uri(file_url), datetime.now(tz=timezone.utc),))
+            """, (uploaded_file.name, psycopg2.Binary(file_bytes), datetime.now(tz=timezone.utc)))
             conn.commit()
         except psycopg2.Error as db_error:
             conn.rollback()
             raise APIException(f"Database error: {db_error}")
-        except ValidationError as ve:
-            conn.rollback()
-            raise ve
         finally:
             cur.close()
             conn.close()
 
         return Response({
             "message": "File uploaded successfully",
-            "filename": filename,
-            "file_url": request.build_absolute_uri(file_url) # Provides the full URL
+            "filename": uploaded_file.name,
         }, status=201)

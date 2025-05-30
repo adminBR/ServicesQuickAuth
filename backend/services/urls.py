@@ -1,8 +1,8 @@
 from django.contrib import admin
 from django.urls import path,include
-from .views import serviceManaging,ImageUploadView
+from .views import ServicesManager,ImageManager
 
 urlpatterns = [
-    path('item/',serviceManaging.as_view()),
-    path('upload-image/', ImageUploadView.as_view()),
+    path('/',ServicesManager.as_view()),
+    path('image/', ImageManager.as_view()),
 ]

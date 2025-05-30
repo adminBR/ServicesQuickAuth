@@ -9,45 +9,19 @@ from rest_framework import status
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 
-
-
-from .serializers import SumInputSerializer
+from datetime import datetime,timedelta,timezone
 import jwt
 import psycopg2
-from datetime import datetime,timedelta,timezone
-
 import re
 
-DB_HOST = '192.168.1.64'
-DB_NAME = 'auth_service'
-DB_USER = 'postgres'
-DB_PASSWORD = 'postgres'
+from .serializers import SumInputSerializer
+from utils.jwt import create_token,decode_token,get_admin_user_from_token
+from utils.database import get_db_connection
 
-SECRET_KEY = "testkey"
-JWT_EXPIRATION = timedelta(days=1)
-
-# Password validation settings
-MIN_PASSWORD_LENGTH = 6
 PASSWORD_REGEX = re.compile(r'^(?=.*[A-Za-z])(?=.*\d).+$')  # At least one letter and one number
-
-def createToken(userid,username,timeInDays):
-    
-    payload = {
-        "user_id":userid,
-        "user_name":username,
-        "expiration":str(datetime.now(tz=timezone.utc)+timedelta(days=timeInDays))
-        }
-    
-    token = jwt.encode(payload,SECRET_KEY,algorithm="HS256")
-    return token
-
-
-def extractToken(token):
-    payload = jwt.decode(token,SECRET_KEY,algorithms=['HS256'])
-    return payload
+MIN_PASSWORD_LENGTH = 6
 
 def validate_password(password):
-    
     if len(password) < MIN_PASSWORD_LENGTH:
         raise ValidationError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters long")
     
@@ -56,75 +30,7 @@ def validate_password(password):
     
     return True
 
-def get_db_connection():
-    try:
-        connection = psycopg2.connect(
-            host=DB_HOST,
-            database=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD
-        )
-        return connection
-    except psycopg2.Error as e:
-        print(f"Database conection error: {e}")
-        raise APIException(f"Database conection error: {e}")
-    
-# --- Helper for Admin Authentication ---
-def get_admin_user_from_token(request):
-    auth = get_authorization_header(request).decode()
-    if not auth.startswith("Bearer "):
-        # Try to get token from cookie if not in header (for potential browser direct access, though API usually uses Header)
-        token_from_cookie = request.COOKIES.get('token') # Assuming 'token' is the cookie name used in UserLogin
-        if not token_from_cookie:
-            raise APIException("Authentication credentials were not provided.", code=status.HTTP_401_UNAUTHORIZED)
-        token = token_from_cookie
-    else:
-        token = auth.split(" ")[1]
 
-    try:
-        payload = extractToken(token) # extractToken should handle expired/invalid internally if needed, or raise
-        expiration_str = payload.get("expiration")
-        if not expiration_str:
-            raise APIException("Invalid token: Missing expiration.", code=status.HTTP_401_UNAUTHORIZED)
-        
-        expiration = datetime.fromisoformat(expiration_str)
-        if expiration < datetime.now(timezone.utc):
-            raise APIException("Token expired", code=status.HTTP_401_UNAUTHORIZED)
-
-        user_id = payload.get("user_id")
-        if not user_id:
-            raise APIException("Invalid token: Missing user_id.", code=status.HTTP_401_UNAUTHORIZED)
-
-        conn = get_db_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute("SELECT usr_admin, usr_login FROM usr_info WHERE usr_id = %s", (user_id,))
-            user_record = cur.fetchone()
-            if not user_record:
-                raise APIException("User not found", code=status.HTTP_401_UNAUTHORIZED)
-            
-            is_admin = user_record[0]
-            user_name = user_record[1]
-
-            if not is_admin:
-                raise APIException("Admin privileges required.", code=status.HTTP_403_FORBIDDEN)
-            
-            return {"user_id": user_id, "user_name": user_name, "is_admin": True}
-        finally:
-            cur.close()
-            conn.close()
-    except jwt.ExpiredSignatureError:
-        raise APIException("Token expired", code=status.HTTP_401_UNAUTHORIZED)
-    except jwt.InvalidTokenError:
-        raise APIException("Invalid token", code=status.HTTP_401_UNAUTHORIZED)
-    except APIException as e: # Re-raise APIExceptions with their status codes
-        raise e
-    except Exception as e:
-        # It's good practice to log the actual error `e` here
-        print(f"Admin Auth Error: {e}")
-        raise APIException("An error occurred during token validation.", code=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    
 class UserRegister(APIView):
     def post(self, request):
         conn = get_db_connection()
@@ -132,7 +38,6 @@ class UserRegister(APIView):
         conn.autocommit = False
 
         try:
-            # --- data validation ---
             if not request.data.get('user_name'):
                 raise ValidationError("Missing 'user_name' field.")
             if not request.data.get('user_pass'):
@@ -160,7 +65,6 @@ class UserRegister(APIView):
         finally:
             cur.close()
             conn.close()
-
 
 @method_decorator(csrf_exempt, name='dispatch')
 class UserLogin(APIView):
@@ -195,8 +99,8 @@ class UserLogin(APIView):
             if not user:
                 raise ValidationError("User not found or invalid credentials.")
 
-            access_token = createToken(user[0], user_name, 1)
-            refresh_token = createToken(user[0], user_name, 90)
+            access_token = create_token(user[0], user_name, 1)
+            refresh_token = create_token(user[0], user_name, 90)
 
             resp = Response({
                 "response": "Login successful",
@@ -239,7 +143,7 @@ class ValidateToken(APIView):
 
         token = auth.split()[1]
         try:
-            payload = extractToken(token)
+            payload = create_token(token)
             expiration = datetime.fromisoformat(payload["expiration"])
             if expiration < datetime.now(timezone.utc):
                 return Response({"detail":"Token expired"},
@@ -248,7 +152,6 @@ class ValidateToken(APIView):
             user_id = payload["user_id"]
 
             if service_id:
-                # check DB access
                 conn = get_db_connection()
                 cur = conn.cursor()
                 try:
@@ -289,13 +192,13 @@ class RefreshToken(APIView):
             return Response({"detail": "Refresh token is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            payload = extractToken(refresh_token)
+            payload = decode_token(refresh_token)
             expiration = datetime.fromisoformat(payload["expiration"])
             if expiration < datetime.now(timezone.utc):
                 return Response({"detail": "Refresh token expired"}, status=status.HTTP_401_UNAUTHORIZED)
 
             # Issue a new access token
-            new_access_token = createToken(payload["user_id"], payload["user_name"], 1)
+            new_access_token = decode_token(payload["user_id"], payload["user_name"], 1)
 
             return Response({
                 "access_token": new_access_token
@@ -357,13 +260,11 @@ class AdminUserOperationsView(APIView):
         if not user_pass:
             raise ValidationError("Missing 'user_pass' field.")
         
-        validate_password(user_pass) # Reuse existing password validation
+        validate_password(user_pass)
 
         user_name = user_name.lower()
-        # Note: Storing passwords in plain text (even lowered) is highly insecure.
-        # You should use a strong hashing algorithm (e.g., bcrypt, Argon2).
-        # This example follows your existing pattern of user_pass.lower().
-        user_pass_processed = user_pass # In a real scenario, hash this password
+        # Note: use bcrypt in the future to not store plain text passwords
+        user_pass_processed = user_pass
 
         conn = get_db_connection()
         cur = conn.cursor()
