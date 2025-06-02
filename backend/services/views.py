@@ -5,7 +5,7 @@ from rest_framework.exceptions import ValidationError,APIException
 from rest_framework.request import Request
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.parsers import MultiPartParser, FileUploadParser # For file uploads
+from rest_framework.parsers import MultiPartParser, FileUploadParser,FormParser # For file uploads
 
 import psycopg2
 from datetime import datetime,timedelta,timezone
@@ -22,10 +22,11 @@ class ServicesManager(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request: Request):
+        
         user_id = request.user.id
         conn = get_db_connection()
         cur = conn.cursor()
-        
+        print(user_id)
         try:
             cur.execute("SELECT usr_access FROM usr_info ui WHERE ui.usr_id = %s", (user_id,))
             result = cur.fetchone()
@@ -33,32 +34,52 @@ class ServicesManager(APIView):
 
             cur.execute(f"SELECT * FROM services_info si WHERE si.srv_id IN ({user_services})")
             result = cur.fetchall()
+            users_list = [
+            {
+                "srv_id": row[0],
+                "srv_image": base64.b64encode(row[1]).decode('utf-8') if row[1] else None,
+                "srv_name": row[2],
+                "srv_ip": row[3],
+                "srv_desc": row[4]
+            } for row in result
+        ]
 
-            header = [desc[0] for desc in cur.description]
-            fullresult = [dict(zip(header, row)) for row in result]
-
-            return Response({"message": "success", "content": fullresult})
+            return Response({"message": "success", "content": users_list})
         finally:
             cur.close()
             conn.close()
 
         
     def post(self,request:Request):
+        try:
+            get_admin_user_from_token(request)
+        except APIException as e:
+            return Response({"detail": e.detail}, status=e.status_code)
+        
         conn = get_db_connection()
         cur = conn.cursor()
         conn.autocommit = False
         user_id = request.user.id
         print(request.data)
-        serializer = addServiceSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
 
-        item = serializer.validated_data
-        
+        srv_name = request.data.get('srv_name')
+        srv_ip = request.data.get('srv_ip')
+        srv_desc = request.data.get('srv_desc')
+        srv_image_file = request.FILES.get('srv_image')
+
+
+        uploaded_file = srv_image_file
+        allowed_extensions = ['.jpg', '.jpeg', '.png', '.gif']
+        file_extension = os.path.splitext(uploaded_file.name.lower())
+        if file_extension[1] not in allowed_extensions:
+            raise ValidationError({"detail": f"File type not allowed. Allowed types: {', '.join(allowed_extensions)}"})
+
+        file_bytes = uploaded_file.read()
         try:
             cur.execute("insert into services_info (srv_image, srv_name, srv_ip, srv_desc) values(%s,%s,%s,%s) returning srv_id",
-                        (item['srv_image'],item['srv_name'],item['srv_ip'],item['srv_desc'],))
+                        (psycopg2.Binary(file_bytes),srv_name,srv_ip,srv_desc,))
             result = cur.fetchone()
-            service_id = result[0]
+            _service_id = result[0]
             cur.execute("SELECT usr_access FROM usr_info WHERE usr_id = %s", (user_id,))
             _result_user_access = cur.fetchone()[0]
             
@@ -66,7 +87,7 @@ class ServicesManager(APIView):
                 return Response({"detail": "User not found"}, status=status.HTTP_401_UNAUTHORIZED)
 
             allowed_services = _result_user_access.split(",")
-            if service_id not in allowed_services:
+            if _service_id not in allowed_services:
                 _result_user_access = f"{_result_user_access},{result[0]}"
                 cur.execute("update usr_info set usr_access = %s WHERE usr_id = %s", (_result_user_access,user_id,))
             conn.commit()
@@ -83,116 +104,107 @@ class ServicesManager(APIView):
 
         return Response({"message":"Success","id":result[0]})
     
-    def put(self,request:Request):
-        conn = get_db_connection()
-        cur = conn.cursor()
-        conn.autocommit = False
-        
-        serializer = updateServiceSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        item = serializer.validated_data
-        
-        query = "UPDATE services_info SET "
-        fields = []
-        values = []
-
-        if item.get('srv_image'):
-            fields.append("srv_image = %s")
-            values.append(item['srv_image'])
-
-        if item.get('srv_name'):
-            fields.append("srv_name = %s")
-            values.append(item['srv_name'])
-
-        if item.get('srv_ip'):
-            fields.append("srv_ip = %s")
-            values.append(item['srv_ip'])
-
-        if item.get('srv_desc'):
-            fields.append("srv_desc = %s")
-            values.append(item['srv_desc'])
-
-        query += ", ".join(fields) + " WHERE srv_id = %s"
-        values.append(item['srv_id'])
-        
-        if not fields:
-            raise ValidationError("No Fields being updated.")
-        
-        try:
-            cur.execute(query, values)
-            conn.commit()
-        
-        except psycopg2.Error as e:
-            conn.rollback()
-            raise APIException(f"Insert failed. {e}")
-        finally:
-            cur.close()
-            conn.close()
-        
-
-        return Response({"message":"Success","id":item['srv_id']})
     
-class ImageManager(APIView):
-    permission_classes = [IsAuthenticated] # Or adjust as needed
-    parser_classes = (MultiPartParser, FileUploadParser) # To handle file uploads
     
-    def get(self, request):
-        conn = get_db_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute("SELECT img_id, img_name, img_data, created_at FROM img_info ORDER BY img_id")
-            users_data = cur.fetchall()
-            users_list = [
-                {
-                    "id": row[0],
-                    "img_name": row[1],
-                    # Option 1: Return as base64 string (warning: large size!)
-                    "img_base64": base64.b64encode(row[2]).decode('utf-8') if row[2] else None,
-                    "created_at": row[3].isoformat() if row[3] else None
-                } for row in users_data
-            ]
-            return Response(users_list, status=status.HTTP_200_OK)
-        except psycopg2.Error as e:
-            raise APIException(f"Database query error: {e}")
-        finally:
-            cur.close()
-            conn.close()
+class ServicesManagerUpdate(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser] # Ensure FormParser is included if not always multipart
 
-    def post(self, request: Request):
+    def put(self, request: Request, service_id: int):
         try:
             get_admin_user_from_token(request)
         except APIException as e:
             return Response({"detail": e.detail}, status=e.status_code)
-        
-        if 'file' not in request.data:
-            raise ValidationError({"detail": "No file provided."})
-
-        uploaded_file = request.data['file']
-        allowed_extensions = ['.jpg', '.jpeg', '.png', '.gif']
-        filename, file_extension = os.path.splitext(uploaded_file.name)
-        if file_extension.lower() not in allowed_extensions:
-            raise ValidationError({"detail": f"File type not allowed. Allowed types: {', '.join(allowed_extensions)}"})
-
-        file_bytes = uploaded_file.read()  # Read the file into bytes
 
         conn = get_db_connection()
         cur = conn.cursor()
         conn.autocommit = False
+
+        srv_name = request.data.get('srv_name')
+        srv_ip = request.data.get('srv_ip')
+        srv_desc = request.data.get('srv_desc')
+        srv_image_file = request.FILES.get('srv_image')
+
+        query = "UPDATE services_info SET "
+        fields = []
+        values = []
+
+        if srv_image_file:
+            allowed_extensions = ['.jpg', '.jpeg', '.png', '.gif']
+            file_extension = os.path.splitext(srv_image_file.name.lower())[1]
+            if file_extension not in allowed_extensions:
+                conn.rollback() # Rollback before raising
+                cur.close()
+                conn.close()
+                raise ValidationError({"detail": f"File type not allowed. Allowed types: {', '.join(allowed_extensions)}"})
+
+            file_bytes = srv_image_file.read()
+            fields.append("srv_image = %s")
+            values.append(psycopg2.Binary(file_bytes)) # Store as binary
+
+        if srv_name:
+            fields.append("srv_name = %s")
+            values.append(srv_name)
+
+        if srv_ip:
+            fields.append("srv_ip = %s")
+            values.append(srv_ip)
+
+        if srv_desc:
+            fields.append("srv_desc = %s")
+            values.append(srv_desc)
+
+        if not fields:
+            cur.close() # Close cursor and connection
+            conn.close()
+            return Response({"detail": "No fields to update."}, status=status.HTTP_400_BAD_REQUEST)
+
+        query += ", ".join(fields) + " WHERE srv_id = %s"
+        values.append(service_id)
+
         try:
-            cur.execute("""
-                INSERT INTO img_info (img_name, img_data, created_at)
-                VALUES (%s, %s, %s)
-            """, (uploaded_file.name, psycopg2.Binary(file_bytes), datetime.now(tz=timezone.utc)))
+            cur.execute(query, values)
             conn.commit()
-        except psycopg2.Error as db_error:
+            
+
+        except psycopg2.Error as e:
             conn.rollback()
-            raise APIException(f"Database error: {db_error}")
+            raise APIException(f"Update failed: {e}")
         finally:
             cur.close()
             conn.close()
 
-        return Response({
-            "message": "File uploaded successfully",
-            "filename": uploaded_file.name,
-        }, status=201)
+        return Response({"message": "Success", "id": service_id})
+    
+    
+    def delete(self, request: Request, service_id: int):
+        try:
+            get_admin_user_from_token(request)
+        except APIException as e:
+            return Response({"detail": e.detail}, status=e.status_code)
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        conn.autocommit = False
+
+        try:
+            # Check if service exists
+            cur.execute("SELECT 1 FROM services_info WHERE srv_id = %s", (service_id,))
+            if cur.fetchone() is None:
+                cur.close()
+                conn.close()
+                return Response({"detail": "Service not found."}, status=status.HTTP_404_NOT_FOUND)
+
+            # Proceed to delete
+            cur.execute("DELETE FROM services_info WHERE srv_id = %s", (service_id,))
+            conn.commit()
+
+        except psycopg2.Error as e:
+            conn.rollback()
+            raise APIException(f"Delete failed: {e}")
+        finally:
+            cur.close()
+            conn.close()
+
+        return Response({"message": "Service deleted successfully", "id": service_id}, status=status.HTTP_200_OK)
+    
