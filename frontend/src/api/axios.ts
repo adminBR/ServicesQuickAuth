@@ -29,15 +29,13 @@ export interface AdminService {
   srv_desc?: string;
 }
 
-const API_BASE_URL = "http://192.168.1.64";
-//const API_BASE_URL = "http://192.168.1.7:8000";
+//const API_BASE_URL = "http://192.168.1.64";
+const API_BASE_URL = "http://192.168.1.7:8000";
 
 // Create an Axios instance
 const api = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    "Content-Type": "application/json",
-  },
+  headers: {},
 });
 
 // Helper to get tokens from localStorage

@@ -1,8 +1,13 @@
 import { useState, useEffect } from "react";
-import { Search, Edit, Plus, X } from "lucide-react";
+import { Search, Edit, Plus, X, LoaderCircle } from "lucide-react";
 
 import { useNavigate } from "react-router-dom";
-import { getServices, updateService, addService } from "./api/services";
+import {
+  getServices,
+  updateService,
+  addService,
+  deleteService,
+} from "./api/services";
 import { logoutUser } from "./api/axios";
 import { Navbar } from "./components/Navbar";
 import UserManager from "./components/UserManager";
@@ -10,7 +15,7 @@ import UserManager from "./components/UserManager";
 // Define interfaces for our data types
 interface ServiceType {
   srv_id: number;
-  srv_image: string;
+  srv_image: Base64URLString;
   srv_name: string;
   srv_ip: string;
   srv_desc: string;
@@ -19,6 +24,9 @@ interface ServiceType {
 export default function Dashboard() {
   const navigate = useNavigate();
 
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  const [isRemoveLoading, setRemoveIsLoading] = useState<boolean>(false);
   // Sample data for the service cards
   const [services, setServices] = useState<ServiceType[]>([]);
 
@@ -49,6 +57,9 @@ export default function Dashboard() {
       service.srv_ip.includes(searchTerm)
   );
 
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
   const handleLogout = async () => {
     try {
       await logoutUser();
@@ -77,32 +88,76 @@ export default function Dashboard() {
   const handleUpdateService = async (): Promise<void> => {
     try {
       if (!currentService) return;
+      setIsLoading(true);
 
-      await updateService(currentService.srv_id, currentService);
+      const formData = new FormData();
+      formData.append("srv_name", currentService.srv_name);
+      formData.append("srv_ip", currentService.srv_ip);
+      formData.append("srv_desc", currentService.srv_desc);
+      if (selectedFile) {
+        formData.append("srv_image", selectedFile);
+      }
+      await updateService(currentService.srv_id, formData);
 
       // Update the services in state
-      setServices(
-        services.map((service) =>
-          service.srv_id === currentService.srv_id ? currentService : service
-        )
-      );
+      const request = await getServices();
+      setServices(request["content"] as ServiceType[]);
 
       setEditModalOpen(false);
+      setPreviewImage(null);
+      setSelectedFile(null);
     } catch (err) {
       console.error("Error updating service:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteService = async (): Promise<void> => {
+    try {
+      if (!currentService) return;
+      setRemoveIsLoading(true);
+
+      await deleteService(currentService.srv_id);
+
+      // Update the services in state
+      const request = await getServices();
+      setServices(request["content"] as ServiceType[]);
+
+      setEditModalOpen(false);
+      setPreviewImage(null);
+      setSelectedFile(null);
+    } catch (err) {
+      console.error("Error updating service:", err);
+    } finally {
+      setRemoveIsLoading(false);
     }
   };
 
   // Function to handle add service
   const handleAddService = async (): Promise<void> => {
     try {
-      await addService(newService);
+      setIsLoading(true);
+      const formData = new FormData();
+      formData.append("srv_name", newService.srv_name);
+      formData.append("srv_ip", newService.srv_ip);
+      formData.append("srv_desc", newService.srv_desc);
+      if (selectedFile) {
+        formData.append("srv_image", selectedFile);
+      }
+
+      await addService(formData);
+
       const request = await getServices();
       setServices(request["content"] as ServiceType[]);
 
       setAddModalOpen(false);
+      setPreviewImage(null);
+      setSelectedFile(null);
     } catch (err) {
       console.error("Error adding service:", err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -146,7 +201,11 @@ export default function Dashboard() {
                   className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                 >
                   <Plus className="h-4 w-4 mr-2" />
-                  Add Service
+                  {isLoading ? (
+                    <LoaderCircle className="animate-spin w-5 h-5 text-white" />
+                  ) : (
+                    <p>Add service</p>
+                  )}
                 </button>
                 <button
                   onClick={() => setUserManager(!userManager)}
@@ -169,7 +228,10 @@ export default function Dashboard() {
                   >
                     <div className="aspect-w-16 aspect-h-9 bg-gray-200">
                       <img
-                        src={service.srv_image}
+                        src={`data:${service.srv_image
+                          .split(".")
+                          .pop()
+                          ?.toLowerCase()};base64,${service.srv_image}`}
                         alt={service.srv_name}
                         className="w-full h-48 object-cover"
                         onClick={() => handleServiceClick(service.srv_ip)}
@@ -293,35 +355,67 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    Image URL
+                    Service Image
                   </label>
                   <input
-                    type="text"
-                    value={currentService.srv_image}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      setCurrentService({
-                        ...currentService,
-                        srv_image: e.target.value,
-                      })
-                    }
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setSelectedFile(file);
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setPreviewImage(reader.result as string);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
                   />
+                  {previewImage && (
+                    <img
+                      src={previewImage}
+                      alt="Preview"
+                      className="mt-2 w-32 h-32 object-cover rounded"
+                    />
+                  )}
                 </div>
               </div>
 
-              <div className="mt-6 flex justify-end">
-                <button
-                  onClick={() => setEditModalOpen(false)}
-                  className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 mr-3"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleUpdateService}
-                  className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                >
-                  Save Changes
-                </button>
+              <div className="mt-6 flex justify-between items-center">
+                {/* Left Side - Delete Button */}
+                <div className="flex">
+                  <button
+                    onClick={handleDeleteService}
+                    className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                  >
+                    {isRemoveLoading ? (
+                      <LoaderCircle className="animate-spin w-5 h-5 text-white" />
+                    ) : (
+                      <p>Remover</p>
+                    )}
+                  </button>
+                </div>
+
+                {/* Right Side - Cancel and Save Buttons */}
+                <div className="flex">
+                  <button
+                    onClick={() => setEditModalOpen(false)}
+                    className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 mr-3"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleUpdateService}
+                    className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                  >
+                    {isLoading ? (
+                      <LoaderCircle className="animate-spin w-5 h-5 text-white" />
+                    ) : (
+                      <p>Salvar</p>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -392,20 +486,30 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    Image URL
+                    Service Image
                   </label>
                   <input
-                    type="text"
-                    value={newService.srv_image}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      setNewService({
-                        ...newService,
-                        srv_image: e.target.value,
-                      })
-                    }
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                    placeholder="Enter image URL or leave as default"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setSelectedFile(file);
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setPreviewImage(reader.result as string);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
                   />
+                  {previewImage && (
+                    <img
+                      src={previewImage}
+                      alt="Preview"
+                      className="mt-2 w-32 h-32 object-cover rounded"
+                    />
+                  )}
                 </div>
               </div>
 
@@ -414,13 +518,17 @@ export default function Dashboard() {
                   onClick={() => setAddModalOpen(false)}
                   className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 mr-3"
                 >
-                  Cancel
+                  Cancelar
                 </button>
                 <button
                   onClick={handleAddService}
                   className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                 >
-                  Add Service
+                  {isLoading ? (
+                    <LoaderCircle className="animate-spin w-5 h-5 text-white" />
+                  ) : (
+                    <p>Adicionar</p>
+                  )}
                 </button>
               </div>
             </div>
