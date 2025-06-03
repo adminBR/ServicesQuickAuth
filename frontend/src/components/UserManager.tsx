@@ -13,6 +13,8 @@ import {
   AdminService,
 } from "../api/axios"; // Adjust path
 
+import { LoaderCircle } from "lucide-react";
+
 interface UserManagerProps {
   onClose: () => void; // Callback to close the modal
 }
@@ -21,6 +23,7 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [allServices, setAllServices] = useState<AdminService[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true); // Start true to load data
+  const [isLoadingPost, setIsLoadingPost] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isAdminUser, setIsAdminUser] = useState<boolean>(false);
 
@@ -61,10 +64,6 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
           // Fetch services first as they are needed for both add/edit forms
           await fetchAllServices();
           await fetchUsers();
-        } catch (err) {
-          // Error handling is done within fetchUsers and fetchAllServices
-          // but we can set a general loading error if needed.
-          // For now, relying on specific error messages.
         } finally {
           setIsLoading(false);
         }
@@ -73,7 +72,7 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
     } else {
       setIsAdminUser(false);
       setError(
-        "Access Denied. You must be an administrator to view this page."
+        "Acesso negado. You must be an administrator to view this page."
       );
       setIsLoading(false); // Not loading if not admin
     }
@@ -130,6 +129,7 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
   };
 
   const handleAddUser = async (e: FormEvent) => {
+    setIsLoadingPost(true);
     e.preventDefault();
     setError(null);
     if (!newUsername.trim() || !newPassword.trim()) {
@@ -149,6 +149,8 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
       resetAddUserForm();
     } catch (err: any) {
       handleApiError(err, "Failed to add user.");
+    } finally {
+      setIsLoadingPost(false);
     }
   };
 
@@ -180,6 +182,7 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
   };
 
   const handleEditUser = async (e: FormEvent) => {
+    setIsLoadingPost(true);
     e.preventDefault();
     if (!currentUserToEdit) return;
     setError(null);
@@ -221,6 +224,8 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
       setCurrentUserToEdit(null);
     } catch (err: any) {
       handleApiError(err, "Failed to update user.");
+    } finally {
+      setIsLoadingPost(false);
     }
   };
 
@@ -340,7 +345,7 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
           className="block text-sm font-medium text-gray-700"
           htmlFor="newUsername"
         >
-          Username
+          Usuário
         </label>
         <input
           type="text"
@@ -356,7 +361,7 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
           className="block text-sm font-medium text-gray-700"
           htmlFor="newPassword"
         >
-          Password
+          Senha
         </label>
         <input
           type="password"
@@ -366,6 +371,21 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
           required
           className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
         />
+      </div>
+      <div className="flex items-center">
+        <input
+          type="checkbox"
+          id="newIsAdmin"
+          checked={newIsAdmin}
+          onChange={(e) => setNewIsAdmin(e.target.checked)}
+          className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+        />
+        <label
+          htmlFor="newIsAdmin"
+          className="ml-2 block text-sm text-gray-900"
+        >
+          É Admin?
+        </label>
       </div>
       {/* ADDED: Service Access Rights selection for Add User form */}
       <div>
@@ -408,21 +428,7 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
           )}
         </div>
       </div>
-      <div className="flex items-center">
-        <input
-          type="checkbox"
-          id="newIsAdmin"
-          checked={newIsAdmin}
-          onChange={(e) => setNewIsAdmin(e.target.checked)}
-          className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-        />
-        <label
-          htmlFor="newIsAdmin"
-          className="ml-2 block text-sm text-gray-900"
-        >
-          Is Admin?
-        </label>
-      </div>
+
       <div className="flex justify-end space-x-3 pt-3">
         <button
           type="button"
@@ -432,13 +438,17 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
           }}
           className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md border border-gray-300 shadow-sm"
         >
-          Cancel
+          Cancelar
         </button>
         <button
           type="submit"
-          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md shadow-sm"
+          className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md shadow-sm"
         >
-          Create User
+          {isLoadingPost ? (
+            <LoaderCircle className="animate-spin w-20 h-5 text-white" />
+          ) : (
+            <p>Criar usuário</p>
+          )}
         </button>
       </div>
     </form>
@@ -451,7 +461,7 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
           className="block text-sm font-medium text-gray-700"
           htmlFor="editPassword"
         >
-          New Password (optional)
+          Nova senha (opcional)
         </label>
         <input
           type="password"
@@ -474,12 +484,12 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
           htmlFor="editIsAdmin"
           className="ml-2 block text-sm text-gray-900"
         >
-          Is Admin?
+          É Admin?
         </label>
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-700">
-          Service Access Rights
+          Direito de acesso
         </label>
         <div className="mt-1 max-h-40 overflow-y-auto border border-gray-300 rounded-md p-3 bg-gray-50 space-y-2">
           {allServices.length > 0 ? (
@@ -524,13 +534,17 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
           }}
           className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md border border-gray-300 shadow-sm"
         >
-          Cancel
+          Cancelar
         </button>
         <button
           type="submit"
           className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md shadow-sm"
         >
-          Save Changes
+          {isLoadingPost ? (
+            <LoaderCircle className="animate-spin w-24 h-5 text-white" />
+          ) : (
+            <p>Salvar mudanças</p>
+          )}
         </button>
       </div>
     </form>
@@ -549,7 +563,7 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
             id="userManagerModalTitle"
             className="text-xl font-semibold text-gray-800"
           >
-            User Management
+            Gerenciamento de usuários
           </h1>
           <button
             onClick={onClose}
@@ -655,19 +669,19 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
                               scope="col"
                               className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider"
                             >
-                              Access (Service IDs)
+                              Acesso (IDs)
                             </th>
                             <th
                               scope="col"
                               className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider"
                             >
-                              Created
+                              Criado em
                             </th>
                             <th
                               scope="col"
                               className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider"
                             >
-                              Actions
+                              Ações
                             </th>
                           </tr>
                         </thead>
@@ -724,7 +738,7 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
                                   }}
                                   className="text-red-600 hover:text-red-800 transition-colors"
                                 >
-                                  Delete
+                                  Remover
                                 </button>
                               </td>
                             </tr>
@@ -741,7 +755,7 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
       </div>
 
       {showAddUserModal &&
-        renderSubModal("Add New User", addUserFormContent, () => {
+        renderSubModal("Adicionar novo usuário", addUserFormContent, () => {
           setShowAddUserModal(false);
           resetAddUserForm(); // Also clears sub-modal error
         })}

@@ -23,10 +23,10 @@ MIN_PASSWORD_LENGTH = 6
 
 def validate_password(password):
     if len(password) < MIN_PASSWORD_LENGTH:
-        raise ValidationError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters long")
+        raise ValidationError({"detail":f"Senha precisa ter no minimo {MIN_PASSWORD_LENGTH} digitos."})
     
     if not PASSWORD_REGEX.match(password):
-        raise ValidationError("Password must contain at least one letter and one number")
+        raise ValidationError({"detail": "Senha precisa ter no minimo uma letra e um número."})
     
     return True
 
@@ -39,9 +39,9 @@ class UserRegister(APIView):
 
         try:
             if not request.data.get('user_name'):
-                raise ValidationError("Missing 'user_name' field.")
+                raise ValidationError({"detail":"Missing 'user_name' field."})
             if not request.data.get('user_pass'):
-                raise ValidationError("Missing 'user_pass' field.")
+                raise ValidationError({"detail":"Missing 'user_pass' field."})
             else:
                 validate_password(request.data.get('user_pass'))
 
@@ -52,7 +52,7 @@ class UserRegister(APIView):
             # --- credentials validation ---
             cur.execute("""SELECT usr_id FROM usr_info WHERE usr_login = %s""", (user_name,))
             if cur.fetchone():
-                raise ValidationError(f"Username {user_name} already in use.")
+                raise ValidationError({"detail":f"Username {user_name} already in use."})
 
             # --- user creation ---
             cur.execute("""
@@ -77,9 +77,9 @@ class UserLogin(APIView):
 
         try:
             if not request.data.get('user_name'):
-                raise ValidationError("Missing 'user_name' field.")
+                raise ValidationError({"detail":"Missing 'user_name' field."})
             if not request.data.get('user_pass'):
-                raise ValidationError("Missing 'user_pass' field.")
+                raise ValidationError({"detail":"Missing 'user_pass' field."})
             else:
                 validate_password(request.data.get('user_pass'))
 
@@ -94,10 +94,10 @@ class UserLogin(APIView):
                 """, (user_name, user_pass,))
                 user = cur.fetchone()
             except psycopg2.Error:
-                raise APIException('Database query error!')
+                raise APIException({"detail":'Database query error!'})
 
             if not user:
-                raise ValidationError("User not found or invalid credentials.")
+                raise ValidationError({"detail":"User not found or invalid credentials."})
 
             access_token = create_token(user[0], user_name, 1)
             refresh_token = create_token(user[0], user_name, 90)
@@ -118,6 +118,8 @@ class UserLogin(APIView):
                 path="/"
             )
             return resp
+        except (APIException, ValidationError) as e:
+            return Response({"detail": str(e)}, status=400)
         finally:
             cur.close()
             conn.close()
@@ -143,7 +145,7 @@ class ValidateToken(APIView):
 
         token = auth.split()[1]
         try:
-            payload = create_token(token)
+            payload = decode_token(token)
             expiration = datetime.fromisoformat(payload["expiration"])
             if expiration < datetime.now(timezone.utc):
                 return Response({"detail":"Token expired"},
@@ -238,7 +240,7 @@ class AdminUserOperationsView(APIView):
             ]
             return Response(users_list, status=status.HTTP_200_OK)
         except psycopg2.Error as e:
-            raise APIException(f"Database query error: {e}")
+            raise APIException({"detail":f"Database query error: {e}"})
         finally:
             cur.close()
             conn.close()
@@ -256,9 +258,10 @@ class AdminUserOperationsView(APIView):
         usr_access = data.get('access', "")    # Default to empty string
 
         if not user_name:
-            raise ValidationError("Missing 'user_name' field.")
+            raise ValidationError({"detail":"Missing 'user_name' field."})
         if not user_pass:
-            raise ValidationError("Missing 'user_pass' field.")
+            raise ValidationError({"detail":"Missing 'user_pass' field."})
+        
         
         validate_password(user_pass)
 
@@ -272,7 +275,7 @@ class AdminUserOperationsView(APIView):
         try:
             cur.execute("SELECT usr_id FROM usr_info WHERE usr_login = %s", (user_name,))
             if cur.fetchone():
-                raise ValidationError(f"Username '{user_name}' already in use.")
+                raise ValidationError({"detail":f"Username '{user_name}' already in use."})
 
             cur.execute("""
                 INSERT INTO usr_info (usr_login, usr_password, usr_admin, usr_access, created_at)
@@ -288,11 +291,8 @@ class AdminUserOperationsView(APIView):
             conn.rollback()
             # Check for unique constraint violation specifically if not caught by pre-check
             if "unique constraint" in str(db_error).lower() and "usr_login" in str(db_error).lower() :
-                 raise ValidationError(f"Username '{user_name}' already in use.")
-            raise APIException(f"Database error: {db_error}")
-        except ValidationError as ve:
-            conn.rollback()
-            raise ve
+                 raise ValidationError({"detail":f"Username '{user_name}' already in use."})
+            raise APIException({"detail":f"Database error: {db_error}"})
         finally:
             cur.close()
             conn.close()
@@ -326,7 +326,7 @@ class AdminUserDetailOperationsView(APIView):
             }
             return Response(user_details, status=status.HTTP_200_OK)
         except psycopg2.Error as e:
-            raise APIException(f"Database query error: {e}")
+            raise APIException({"detail":f"Database query error: {e}"})
         finally:
             cur.close()
             conn.close()
@@ -348,7 +348,7 @@ class AdminUserDetailOperationsView(APIView):
         if user_pass is not None:
             if user_pass == "": # Allow clearing password if business logic permits (unlikely for required field)
                 # Here assuming password is required, so empty string is invalid if not for specific purpose
-                 raise ValidationError("Password cannot be empty if provided for update.")
+                 raise ValidationError({"detail":"Password cannot be empty if provided for update."})
             validate_password(user_pass)
             # Again, HASH THE PASSWORD in a real application
             update_fields.append("usr_password = %s")
@@ -398,10 +398,7 @@ class AdminUserDetailOperationsView(APIView):
             }, status=status.HTTP_200_OK)
         except psycopg2.Error as db_error:
             conn.rollback()
-            raise APIException(f"Database error: {db_error}")
-        except ValidationError as ve:
-            conn.rollback()
-            raise ve
+            raise APIException({"detail":f"Database error: {db_error}"})
         finally:
             cur.close()
             conn.close()
@@ -431,7 +428,7 @@ class AdminUserDetailOperationsView(APIView):
             return Response({"response": f"User ID {target_user_id} deleted successfully."}, status=status.HTTP_200_OK) # Or HTTP_204_NO_CONTENT
         except psycopg2.Error as db_error:
             conn.rollback()
-            raise APIException(f"Database error: {db_error}")
+            raise APIException({"detail":f"Database error: {db_error}"})
         finally:
             cur.close()
             conn.close()
@@ -465,7 +462,7 @@ class AdminListAllServicesView(APIView):
             return Response(services_list, status=status.HTTP_200_OK)
         except psycopg2.Error as e:
             # Log the error e
-            raise APIException(f"Database query error while fetching all services: {e}")
+            raise APIException({"detail":f"Database query error while fetching all services: {e}"})
         finally:
             cur.close()
             conn.close()

@@ -204,7 +204,7 @@ export default function Dashboard() {
                   {isLoading ? (
                     <LoaderCircle className="animate-spin w-5 h-5 text-white" />
                   ) : (
-                    <p>Add service</p>
+                    <p>Adicionar serviço</p>
                   )}
                 </button>
                 <button
@@ -431,7 +431,7 @@ export default function Dashboard() {
           <div className="relative bg-white rounded-lg shadow-lg max-w-md w-full">
             <div className="flex justify-between items-center p-4 border-b">
               <h3 className="text-lg font-medium text-gray-900">
-                Add New Service
+                Adicionar novo serviço
               </h3>
               <button
                 onClick={() => setAddModalOpen(false)}
@@ -444,7 +444,7 @@ export default function Dashboard() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    Service Name
+                    Nome do serviço
                   </label>
                   <input
                     type="text"
@@ -453,12 +453,12 @@ export default function Dashboard() {
                       setNewService({ ...newService, srv_name: e.target.value })
                     }
                     className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                    placeholder="Enter service name"
+                    placeholder="Insira um nome"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    IP Address
+                    Ip do serviço
                   </label>
                   <input
                     type="text"
@@ -467,12 +467,12 @@ export default function Dashboard() {
                       setNewService({ ...newService, srv_ip: e.target.value })
                     }
                     className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                    placeholder="Enter IP address (e.g. 192.168.1.100)"
+                    placeholder="Insira um endereço ip (ex. 192.168.1.100)"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    Description
+                    Descrição do serviço
                   </label>
                   <textarea
                     value={newService.srv_desc}
@@ -481,12 +481,12 @@ export default function Dashboard() {
                     }
                     rows={3}
                     className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                    placeholder="Enter service description"
+                    placeholder="Insira uma descrição sobre o funcionamento do serviço"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    Service Image
+                    Imagem do serviço
                   </label>
                   <input
                     type="file"

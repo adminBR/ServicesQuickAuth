@@ -4,7 +4,7 @@ from django.urls import path,include
 from .views import UserRegister,UserLogin,ValidateToken,RefreshToken,UserLogout,AdminUserOperationsView, AdminUserDetailOperationsView,AdminListAllServicesView
 
 urlpatterns = [
-    path('register/',UserRegister.as_view()),
+    #path('register/',UserRegister.as_view()),
     path('login/',UserLogin.as_view()),
     path('logout',UserLogout.as_view()),
     path('validate',ValidateToken.as_view()),
