@@ -1,16 +1,23 @@
 how to change the service to the gateway
-1- add a name to the apiendpoint
-like before it was:
-0.0.0.0:1111/getinfo
-now will be:
-0.0.0.0:1111/api_of_something/getinfo
+1- Add a unique naming scheme for every single endpoint
+Ex:
+0.0.0.0:1111/getinfo >>> 0.0.0.0:1111/api_of_something/getinfo
+0.0.0.0:8000/users/register >>> 0.0.0.0:8000/users_manager_api/users/register
+on both front and back:
+await api.get(`/item/${id}`) >>> await api.get(`/report_manager_api/item/${id}`)
 
-2-change the front and the backend on docker compose filefrontend:
+
+2- Change the docker-compose file doing the following:
+**ip on front should be locked to localhost so only the api gateway have access
+**ip on back shouldnt exist, only front will access it by name
+change the front and the backend on docker compose filefrontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "127.0.0.1:5050:80" ## frontend add the 127.0.0.1 to lock on localhost
+###### frontend add the 127.0.0.1 to lock on localhost
+######
+      - "5050:80" >>> - "127.0.0.1:5050:80"
     networks:
       - app-network
     restart: always
@@ -19,14 +26,15 @@ now will be:
     build:
       context: ./backend
       dockerfile: Dockerfile
-	  ##backend remove the ports to lock on inside connection
+###### backend remove the ports/ip to lock on inside connection
+######
     environment:
       - FLASK_ENV=production
     networks:
       - app-network
     restart: always
 	
-3- make sure default.conf is redirecting the calls to /api to the backend
+3- Edit the default.conf in the backend docker file so it redirects the dns created for the backend before instead of an IP
 server {
     listen 80;
 
@@ -35,9 +43,10 @@ server {
         index  index.html index.htm;
         try_files $uri /index.html;
     }
-
-    location /api/ {##here
-        proxy_pass http://backend:8000/; ##and here
+###### this api will be used only in production
+    location /api/ {
+###### change the port here if necessary, the name "backend" also needs to match the docker container file
+        proxy_pass http://backend:8000/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -47,14 +56,12 @@ server {
     }
 }
 
-4- change frontend to call the api properly
-("/api/prescricao_api/getmaxpresc");
-if the endpoint you want is the new "api_of_something/getinfo" then you call "api/api_of_something/getinfo"
 
-5-add the entry in the nginx config
+4- Add the entry in the nginx conf
   location /painel_prescricao/ {
     set $service_id 12;
     auth_request /_auth;
+###### change port to match the docker frontend 
     proxy_pass http://127.0.0.1:5050/;
     proxy_http_version 1.1;
   
@@ -63,13 +70,13 @@ if the endpoint you want is the new "api_of_something/getinfo" then you call "ap
     sub_filter_once off;
     sub_filter '/assets/' '/painel_prescricao/assets/';
   }
-  
-  location /api/prescricao_api/ { ##the root of the api
+###### unique naming scheme goes here with /api before
+  location /api/prescricao_api/ {
+###### change the service_id to match the entry on the database
     set $service_id 12; 
     auth_request /_auth; 
+###### change port to match the docker frontend 
     proxy_pass http://127.0.0.1:5050; 
-                                      
-  
     proxy_set_header Host $host; 
                                  
     proxy_set_header X-Real-IP $remote_addr;

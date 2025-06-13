@@ -139,6 +139,7 @@ class ValidateToken(APIView):
     def get(self, request):
         auth = get_authorization_header(request).decode()
         service_id = request.headers.get("X-Service-ID")
+        print(auth,service_id)
         if not auth.startswith("Bearer "):
             return Response({"detail": "No token provided"}, 
                             status=status.HTTP_401_UNAUTHORIZED)
@@ -203,7 +204,7 @@ class RefreshToken(APIView):
             new_access_token = decode_token(payload["user_id"], payload["user_name"], 1)
 
             return Response({
-                "access_token": new_access_token
+                "access_token": f"Bearer {new_access_token}"
             }, status=status.HTTP_200_OK)
 
         except jwt.ExpiredSignatureError:
