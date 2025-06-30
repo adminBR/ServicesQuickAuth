@@ -37,7 +37,6 @@ class SshManager(APIView):
             "syntax_status": False if return_string.find("nginx: the configuration file /etc/nginx/nginx.conf syntax is ok") == -1 else True,
             "test_status": False if return_string.find("nginx: configuration file /etc/nginx/nginx.conf test is successful") == -1 else True
             })
-    def backupConf(self,client:SSHClient):
         
         
 

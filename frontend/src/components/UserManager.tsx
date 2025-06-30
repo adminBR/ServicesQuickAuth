@@ -36,6 +36,7 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newIsAdmin, setNewIsAdmin] = useState(false);
+  const [newEndlessJwt, setNewEndlessJwt] = useState(false);
   // const [newAccess, setNewAccess] = useState(""); // No longer needed, replaced by newSelectedServiceIds
   const [newSelectedServiceIds, setNewSelectedServiceIds] = useState<
     Set<number>
@@ -44,6 +45,7 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
   // Edit User Form Fields
   const [editPassword, setEditPassword] = useState("");
   const [editIsAdmin, setEditIsAdmin] = useState(false);
+  const [editEndlessJwt, setEditEndlessJwt] = useState(false);
   const [editSelectedServiceIds, setEditSelectedServiceIds] = useState<
     Set<number>
   >(new Set());
@@ -110,6 +112,7 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
     setNewUsername("");
     setNewPassword("");
     setNewIsAdmin(false);
+    setNewEndlessJwt(false);
     // setNewAccess(""); // No longer needed
     setNewSelectedServiceIds(new Set()); // ADDED: Reset selected services for new user
     setError(null); // Clear form-specific errors
@@ -140,6 +143,7 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
       user_name: newUsername,
       user_pass: newPassword,
       is_admin: newIsAdmin,
+      jwt_expiration: newEndlessJwt ? "inf" : "1",
       access: Array.from(newSelectedServiceIds).join(","), // MODIFIED: Use newSelectedServiceIds
     };
     try {
@@ -158,12 +162,14 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
     setCurrentUserToEdit(user);
     setEditPassword(""); // Clear password field
     setEditIsAdmin(user.is_admin);
+    setEditEndlessJwt(user.jwt_expiration === "1" ? false : true);
     const serviceIds = user.access
       ? user.access
           .split(",")
           .map((id) => parseInt(id.trim(), 10))
           .filter((id) => !isNaN(id))
       : [];
+
     setEditSelectedServiceIds(new Set(serviceIds));
     setShowEditUserModal(true);
     setError(null);
@@ -189,6 +195,7 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
 
     const payload: UpdateUserPayload = {
       is_admin: editIsAdmin,
+      jwt_expiration: editEndlessJwt ? "inf" : "1",
       access: Array.from(editSelectedServiceIds).join(","),
     };
     if (editPassword.trim()) {
@@ -206,14 +213,30 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
 
     const noPasswordChange = !payload.user_pass;
     const noAdminChange = editIsAdmin === currentUserToEdit.is_admin;
+
+    const noEndlessJwtChange =
+      (editEndlessJwt ? "inf" : "1") === currentUserToEdit.jwt_expiration;
+
     const noAccessChange =
       editSelectedServiceIds.size === originalAccessSet.size &&
       Array.from(editSelectedServiceIds).every((id) =>
         originalAccessSet.has(id)
       );
+    console.log(
+      noPasswordChange,
+      noAdminChange,
+      noAccessChange,
+      noEndlessJwtChange
+    );
 
-    if (noPasswordChange && noAdminChange && noAccessChange) {
-      setError("No changes detected to update.");
+    if (
+      noPasswordChange &&
+      noAdminChange &&
+      noAccessChange &&
+      noEndlessJwtChange
+    ) {
+      setIsLoadingPost(false);
+      setError("Nenhuma mudança foi feita...");
       return;
     }
 
@@ -387,6 +410,21 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
           É Admin?
         </label>
       </div>
+      <div className="flex items-center">
+        <input
+          type="checkbox"
+          id="newIsAdmin"
+          checked={newEndlessJwt}
+          onChange={(e) => setNewEndlessJwt(e.target.checked)}
+          className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+        />
+        <label
+          htmlFor="newIsAdmin"
+          className="ml-2 block text-sm text-gray-900"
+        >
+          Sessão infinita?
+        </label>
+      </div>
       {/* ADDED: Service Access Rights selection for Add User form */}
       <div>
         <label className="block text-sm font-medium text-gray-700">
@@ -485,6 +523,21 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
           className="ml-2 block text-sm text-gray-900"
         >
           É Admin?
+        </label>
+      </div>
+      <div className="flex items-center">
+        <input
+          id="jwt_expiration"
+          type="checkbox"
+          checked={editEndlessJwt}
+          onChange={(e) => setEditEndlessJwt(e.target.checked)}
+          className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+        />
+        <label
+          htmlFor="jwt_expiration"
+          className="ml-2 block text-sm text-gray-900"
+        >
+          Sessão infinita
         </label>
       </div>
       <div>
@@ -669,6 +722,12 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
                               scope="col"
                               className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider"
                             >
+                              JWT expiration
+                            </th>
+                            <th
+                              scope="col"
+                              className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider"
+                            >
                               Acesso (IDs)
                             </th>
                             <th
@@ -707,6 +766,9 @@ const UserManager: React.FC<UserManagerProps> = ({ onClose }) => {
                                     No
                                   </span>
                                 )}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                                {user.jwt_expiration}
                               </td>
                               <td
                                 className="px-4 py-3 text-sm text-gray-500 truncate max-w-[150px] sm:max-w-xs"

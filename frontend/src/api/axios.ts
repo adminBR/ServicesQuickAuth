@@ -8,6 +8,7 @@ export interface User {
   is_admin: boolean;
   access: string;
   created_at?: string; // Optional, as it might not always be needed/returned
+  jwt_expiration: string;
 }
 
 export interface NewUserPayload {
@@ -15,12 +16,14 @@ export interface NewUserPayload {
   user_pass: string;
   is_admin?: boolean;
   access?: string;
+  jwt_expiration: string;
 }
 
 export interface UpdateUserPayload {
   user_pass?: string; // Password is optional on update
   is_admin?: boolean;
   access?: string;
+  jwt_expiration: string;
 }
 
 export interface AdminService {
