@@ -206,7 +206,7 @@ class RefreshToken(APIView):
                     return Response({"detail": "Refresh token expired"}, status=status.HTTP_401_UNAUTHORIZED)
 
             # Issue a new access token
-            new_access_token = decode_token(payload["user_id"], payload["user_name"], 1)
+            new_access_token = create_token(payload["user_id"],payload["user_name"],payload["expiration"])
 
             return Response({
                 "access_token": f"Bearer {new_access_token}"
