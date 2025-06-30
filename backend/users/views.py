@@ -20,6 +20,7 @@ from utils.database import get_db_connection
 
 PASSWORD_REGEX = re.compile(r'^(?=.*[A-Za-z])(?=.*\d).+$')  # At least one letter and one number
 MIN_PASSWORD_LENGTH = 6
+JWT_DEFAULT_EXPIRATION = 1
 
 def validate_password(password):
     if len(password) < MIN_PASSWORD_LENGTH:
@@ -48,6 +49,7 @@ class UserRegister(APIView):
             user_name = request.data.get('user_name')
             user_name = user_name.lower()
             user_pass = request.data.get('user_pass')
+            jwt_expiration = request.data.get('jwt_expiration')
 
             # --- credentials validation ---
             cur.execute("""SELECT usr_id FROM usr_info WHERE usr_login = %s""", (user_name,))
@@ -56,9 +58,9 @@ class UserRegister(APIView):
 
             # --- user creation ---
             cur.execute("""
-                INSERT INTO usr_info (usr_login, usr_password, usr_access, usr_admin, created_at) 
-                VALUES (%s, %s, %s, %s, %s)
-            """, (user_name, user_pass, "0", False, datetime.now(tz=timezone.utc)))
+                INSERT INTO usr_info (usr_login, usr_password, usr_access, usr_admin, created_at, jwt_expiration) 
+                VALUES (%s, %s, %s, %s, %s,%s)
+            """, (user_name, user_pass, "0", False, datetime.now(tz=timezone.utc),jwt_expiration))
 
             conn.commit()
             return Response({'response': f"User: {user_name} has been successfully registered"})
@@ -89,7 +91,7 @@ class UserLogin(APIView):
 
             try:
                 cur.execute("""
-                    SELECT usr_id,usr_admin FROM usr_info 
+                    SELECT usr_id, usr_admin, jwt_expiration FROM usr_info 
                     WHERE usr_login = %s AND usr_password = %s
                 """, (user_name, user_pass,))
                 user = cur.fetchone()
@@ -99,7 +101,7 @@ class UserLogin(APIView):
             if not user:
                 raise ValidationError({"detail":"User not found or invalid credentials."})
 
-            access_token = create_token(user[0], user_name, 1)
+            access_token = create_token(user[0], user_name, "inf" if user[2]=="inf" else int(user[2]))
             refresh_token = create_token(user[0], user_name, 90)
 
             resp = Response({
@@ -107,7 +109,8 @@ class UserLogin(APIView):
                 "user": {"id": user[0], "username": user_name},
                 "access_token": access_token,
                 "refresh_token": refresh_token,
-                "isAdmin":user[1]
+                "isAdmin":user[1],
+                "jwt_expiration":user[2]
             })
             resp.set_cookie(
                 key="token",
@@ -147,10 +150,10 @@ class ValidateToken(APIView):
         token = auth.split()[1]
         try:
             payload = decode_token(token)
-            expiration = datetime.fromisoformat(payload["expiration"])
-            if expiration < datetime.now(timezone.utc):
-                return Response({"detail":"Token expired"},
-                                status=status.HTTP_401_UNAUTHORIZED)
+            if(payload["expiration"] != "inf"):
+                expiration = datetime.fromisoformat(payload["expiration"])
+                if expiration < datetime.now(timezone.utc):
+                    return Response({"detail":"Token expired"},status=status.HTTP_401_UNAUTHORIZED)
                 
             user_id = payload["user_id"]
 
@@ -196,9 +199,11 @@ class RefreshToken(APIView):
 
         try:
             payload = decode_token(refresh_token)
-            expiration = datetime.fromisoformat(payload["expiration"])
-            if expiration < datetime.now(timezone.utc):
-                return Response({"detail": "Refresh token expired"}, status=status.HTTP_401_UNAUTHORIZED)
+            
+            if(payload["expiration"] != "inf"):
+                expiration = datetime.fromisoformat(payload["expiration"])
+                if expiration < datetime.now(timezone.utc):
+                    return Response({"detail": "Refresh token expired"}, status=status.HTTP_401_UNAUTHORIZED)
 
             # Issue a new access token
             new_access_token = decode_token(payload["user_id"], payload["user_name"], 1)
@@ -215,7 +220,7 @@ class RefreshToken(APIView):
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @method_decorator(csrf_exempt, name='dispatch')
-class AdminUserOperationsView(APIView):
+class AdminAllUsersOperations(APIView):
     authentication_classes = [] # Custom token handling
     permission_classes = [AllowAny] # Custom permission check in method
 
@@ -228,7 +233,7 @@ class AdminUserOperationsView(APIView):
         conn = get_db_connection()
         cur = conn.cursor()
         try:
-            cur.execute("SELECT usr_id, usr_login, usr_admin, usr_access, created_at FROM usr_info ORDER BY usr_id")
+            cur.execute("SELECT usr_id, usr_login, usr_admin, usr_access, created_at, jwt_expiration FROM usr_info ORDER BY usr_id")
             users_data = cur.fetchall()
             users_list = [
                 {
@@ -236,7 +241,8 @@ class AdminUserOperationsView(APIView):
                     "username": row[1], 
                     "is_admin": row[2], 
                     "access": row[3],
-                    "created_at": row[4].isoformat() if row[4] else None
+                    "created_at": row[4].isoformat() if row[4] else None,
+                    "jwt_expiration": row[5]
                 } for row in users_data
             ]
             return Response(users_list, status=status.HTTP_200_OK)
@@ -257,6 +263,7 @@ class AdminUserOperationsView(APIView):
         user_pass = data.get('user_pass')
         is_admin = data.get('is_admin', False) # Default to False if not provided
         usr_access = data.get('access', "")    # Default to empty string
+        jwt_expiration = data.get('jwt_expiration')    # Default to empty string
 
         if not user_name:
             raise ValidationError({"detail":"Missing 'user_name' field."})
@@ -279,15 +286,22 @@ class AdminUserOperationsView(APIView):
                 raise ValidationError({"detail":f"Username '{user_name}' already in use."})
 
             cur.execute("""
-                INSERT INTO usr_info (usr_login, usr_password, usr_admin, usr_access, created_at)
-                VALUES (%s, %s, %s, %s, %s) RETURNING usr_id
-            """, (user_name, user_pass_processed, bool(is_admin), usr_access, datetime.now(tz=timezone.utc)))
-            new_user_id = cur.fetchone()[0]
+                INSERT INTO usr_info (usr_login, usr_password, usr_admin, usr_access, created_at, jwt_expiration)
+                VALUES (%s, %s, %s, %s, %s, %s) RETURNING usr_id
+            """, (user_name, user_pass_processed, bool(is_admin), usr_access, datetime.now(tz=timezone.utc),jwt_expiration))
+            response = cur.fetchone()
+            
+            if(response and response[0]):
+                new_user_id = response[0]
+            else:
+                raise APIException({"detail":f"Error inserting values..."})
+            
             conn.commit()
             return Response({
                 "response": f"User '{user_name}' created successfully.",
-                "user": {"id": new_user_id, "username": user_name, "is_admin": bool(is_admin), "access": usr_access}
+                "user": {"id": new_user_id, "username": user_name, "is_admin": bool(is_admin), "access": usr_access, "jwt_expiration":jwt_expiration}
             }, status=status.HTTP_201_CREATED)
+            
         except psycopg2.Error as db_error:
             conn.rollback()
             # Check for unique constraint violation specifically if not caught by pre-check
@@ -300,7 +314,7 @@ class AdminUserOperationsView(APIView):
 
 
 @method_decorator(csrf_exempt, name='dispatch')
-class AdminUserDetailOperationsView(APIView):
+class AdminSingleUserOperations(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
 
@@ -313,7 +327,7 @@ class AdminUserDetailOperationsView(APIView):
         conn = get_db_connection()
         cur = conn.cursor()
         try:
-            cur.execute("SELECT usr_id, usr_login, usr_admin, usr_access, created_at FROM usr_info WHERE usr_id = %s", (target_user_id,))
+            cur.execute("SELECT usr_id, usr_login, usr_admin, usr_access, created_at, jwt_expiration FROM usr_info WHERE usr_id = %s", (target_user_id,))
             user_data = cur.fetchone()
             if not user_data:
                 return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
@@ -323,7 +337,8 @@ class AdminUserDetailOperationsView(APIView):
                 "username": user_data[1], 
                 "is_admin": user_data[2], 
                 "access": user_data[3],
-                "created_at": user_data[4].isoformat() if user_data[4] else None
+                "created_at": user_data[4].isoformat() if user_data[4] else None,
+                "jwt_expiration": user_data[5]
             }
             return Response(user_details, status=status.HTTP_200_OK)
         except psycopg2.Error as e:
@@ -340,20 +355,20 @@ class AdminUserDetailOperationsView(APIView):
 
         data = request.data
         user_pass = data.get('user_pass')
-        is_admin = data.get('is_admin') # Expect boolean or it can be omitted
-        usr_access = data.get('access') # Expect string or it can be omitted
+        is_admin = data.get('is_admin',False)
+        usr_access = data.get('access')
+        jwt_expiration = data.get('jwt_expiration')
 
         update_fields = []
         update_values = []
 
         if user_pass is not None:
-            if user_pass == "": # Allow clearing password if business logic permits (unlikely for required field)
-                # Here assuming password is required, so empty string is invalid if not for specific purpose
+            if user_pass == "":
                  raise ValidationError({"detail":"Password cannot be empty if provided for update."})
             validate_password(user_pass)
-            # Again, HASH THE PASSWORD in a real application
+            
             update_fields.append("usr_password = %s")
-            update_values.append(user_pass) # Processed/hashed password
+            update_values.append(user_pass)
 
         if is_admin is not None:
             # Prevent admin from de-admining themselves if they are the one making the request
@@ -366,6 +381,10 @@ class AdminUserDetailOperationsView(APIView):
         if usr_access is not None:
             update_fields.append("usr_access = %s")
             update_values.append(usr_access)
+            
+        if jwt_expiration is not None:
+            update_fields.append("jwt_expiration = %s")
+            update_values.append(jwt_expiration)
         
         if not update_fields:
             return Response({"detail": "No update data provided."}, status=status.HTTP_400_BAD_REQUEST)
@@ -386,15 +405,18 @@ class AdminUserDetailOperationsView(APIView):
             conn.commit()
 
             # Fetch updated user details to return
-            cur.execute("SELECT usr_id, usr_login, usr_admin, usr_access FROM usr_info WHERE usr_id = %s", (target_user_id,))
+            cur.execute("SELECT usr_id, usr_login, usr_admin, usr_access, jwt_expiration FROM usr_info WHERE usr_id = %s", (target_user_id,))
             updated_user = cur.fetchone()
+            if(not updated_user):
+                raise APIException({"detail":"No return from database..."})
             return Response({
                 "response": f"User ID {target_user_id} updated successfully.",
                 "user": {
                     "id": updated_user[0],
                     "username": updated_user[1],
                     "is_admin": updated_user[2],
-                    "access": updated_user[3]
+                    "access": updated_user[3],
+                    "jwt_expiration": updated_user[4]
                 }
             }, status=status.HTTP_200_OK)
         except psycopg2.Error as db_error:

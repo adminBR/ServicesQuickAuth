@@ -16,7 +16,7 @@ def create_token(userid,username,timeInDays):
     payload = {
         "user_id":userid,
         "user_name":username,
-        "expiration":str(datetime.now(tz=timezone.utc)+timedelta(days=timeInDays))
+        "expiration":str("inf" if timeInDays == "inf" else datetime.now(tz=timezone.utc)+timedelta(days=timeInDays))
         }
     
     token = jwt.encode(payload,SECRET_KEY,algorithm="HS256")
