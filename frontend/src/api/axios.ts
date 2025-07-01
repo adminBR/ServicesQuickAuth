@@ -43,7 +43,7 @@ const api = axios.create({
 
 // Helper to get tokens from localStorage
 const getAccessToken = () => localStorage.getItem("access_token");
-const getRefreshToken = () => localStorage.getItem("refresh_token");
+//const getRefreshToken = () => localStorage.getItem("refresh_token");
 
 // Attach access token to each request
 api.interceptors.request.use(
@@ -61,9 +61,17 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config;
+    //const originalRequest = error.config;
+    // Any prohibited or unauthorized request will send the user back to login
+    if ([401, 403].includes(error.response?.status)) {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      window.location.href = "/login";
+      return Promise.reject(error);
+    }
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    /*if (error.response?.status === 401 && !originalRequest._retry) {
+      console.log()
       originalRequest._retry = true;
 
       try {
@@ -89,7 +97,7 @@ api.interceptors.response.use(
         window.location.href = "/login";
         return Promise.reject(refreshError);
       }
-    }
+    }*/
 
     return Promise.reject(error);
   }
