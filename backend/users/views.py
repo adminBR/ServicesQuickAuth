@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.exceptions import ValidationError,APIException
+from rest_framework.exceptions import ValidationError,APIException,AuthenticationFailed
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.permissions import AllowAny
 from rest_framework.authentication import get_authorization_header
@@ -38,20 +38,20 @@ class UserRegister(APIView):
         cur = conn.cursor()
         conn.autocommit = False
 
+        if not request.data.get('user_name'):
+            raise ValidationError({"detail":"Missing 'user_name' field."})
+        if not request.data.get('user_pass'):
+            raise ValidationError({"detail":"Missing 'user_pass' field."})
+        else:
+            validate_password(request.data.get('user_pass'))
+
+        user_name = request.data.get('user_name')
+        user_name = user_name.lower()
+        user_pass = request.data.get('user_pass')
+        jwt_expiration = request.data.get('jwt_expiration')
+
+        # --- credentials validation ---
         try:
-            if not request.data.get('user_name'):
-                raise ValidationError({"detail":"Missing 'user_name' field."})
-            if not request.data.get('user_pass'):
-                raise ValidationError({"detail":"Missing 'user_pass' field."})
-            else:
-                validate_password(request.data.get('user_pass'))
-
-            user_name = request.data.get('user_name')
-            user_name = user_name.lower()
-            user_pass = request.data.get('user_pass')
-            jwt_expiration = request.data.get('jwt_expiration')
-
-            # --- credentials validation ---
             cur.execute("""SELECT usr_id FROM usr_info WHERE usr_login = %s""", (user_name,))
             if cur.fetchone():
                 raise ValidationError({"detail":f"Username {user_name} already in use."})
@@ -63,10 +63,14 @@ class UserRegister(APIView):
             """, (user_name, user_pass, "0", False, datetime.now(tz=timezone.utc),jwt_expiration))
 
             conn.commit()
-            return Response({'response': f"User: {user_name} has been successfully registered"})
+        except psycopg2.Error:
+            raise APIException({"detail":'Database query error!'})
         finally:
             cur.close()
             conn.close()
+            
+        return Response({'response': f"User: {user_name} has been successfully registered"})
+        
 
 @method_decorator(csrf_exempt, name='dispatch')
 class UserLogin(APIView):
@@ -77,55 +81,54 @@ class UserLogin(APIView):
         conn = get_db_connection()
         cur = conn.cursor()
 
+        if not request.data.get('user_name'):
+            raise ValidationError({"detail":"Missing 'user_name' field."})
+        if not request.data.get('user_pass'):
+            raise ValidationError({"detail":"Missing 'user_pass' field."})
+        else:
+            validate_password(request.data.get('user_pass'))
+
+        user_name = request.data.get('user_name')
+        user_name = user_name.lower()
+        user_pass = request.data.get('user_pass')
+
         try:
-            if not request.data.get('user_name'):
-                raise ValidationError({"detail":"Missing 'user_name' field."})
-            if not request.data.get('user_pass'):
-                raise ValidationError({"detail":"Missing 'user_pass' field."})
-            else:
-                validate_password(request.data.get('user_pass'))
-
-            user_name = request.data.get('user_name')
-            user_name = user_name.lower()
-            user_pass = request.data.get('user_pass')
-
-            try:
-                cur.execute("""
-                    SELECT usr_id, usr_admin, jwt_expiration FROM usr_info 
-                    WHERE usr_login = %s AND usr_password = %s
-                """, (user_name, user_pass,))
-                user = cur.fetchone()
-            except psycopg2.Error:
-                raise APIException({"detail":'Database query error!'})
-
-            if not user:
-                raise ValidationError({"detail":"User not found or invalid credentials."})
-
-            access_token = create_token(user[0], user_name, "inf" if user[2]=="inf" else int(user[2]))
-            refresh_token = create_token(user[0], user_name, 90)
-
-            resp = Response({
-                "response": "Login successful",
-                "user": {"id": user[0], "username": user_name},
-                "access_token": access_token,
-                "refresh_token": refresh_token,
-                "isAdmin":user[1],
-                "jwt_expiration":user[2]
-            })
-            resp.set_cookie(
-                key="token",
-                value=access_token,
-                httponly=True,
-                secure=False,
-                samesite="Strict",
-                path="/"
-            )
-            return resp
-        except (APIException, ValidationError) as e:
-            return Response({"detail": str(e)}, status=400)
+            cur.execute("""
+                SELECT usr_id, usr_admin, jwt_expiration FROM usr_info 
+                WHERE usr_login = %s AND usr_password = %s
+            """, (user_name, user_pass,))
+            user = cur.fetchone()
+            
+        except psycopg2.Error:
+            raise APIException({"detail":'Database query error!'})
         finally:
             cur.close()
             conn.close()
+
+        if not user:
+            raise ValidationError({"detail":"User not found or invalid credentials."})
+
+        access_token = create_token(user[0], user_name, "inf" if user[2]=="inf" else int(user[2]))
+        refresh_token = create_token(user[0], user_name, 90)
+
+        resp = Response({
+            "response": "Login successful",
+            "user": {"id": user[0], "username": user_name},
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "isAdmin":user[1],
+            "jwt_expiration":user[2]
+        })
+        resp.set_cookie(
+            key="token",
+            value=access_token,
+            httponly=True,
+            secure=False,
+            samesite="Strict",
+            path="/"
+        )
+        return resp
+        
 
     
 class UserLogout(APIView):
@@ -150,6 +153,7 @@ class ValidateToken(APIView):
         token = auth.split()[1]
         try:
             payload = decode_token(token)
+            print(payload)
             if(payload["expiration"] != "inf"):
                 expiration = datetime.fromisoformat(payload["expiration"])
                 if expiration < datetime.now(timezone.utc):
@@ -170,6 +174,8 @@ class ValidateToken(APIView):
                     if service_id not in allowed_services:
                         return Response({"detail": "Access denied to this service"},
                                         status=status.HTTP_401_UNAUTHORIZED)
+                except psycopg2.Error:
+                    raise APIException({"detail":'Database query error!'})
                 finally:
                     cur.close()
                     conn.close()
@@ -219,17 +225,14 @@ class RefreshToken(APIView):
         except Exception as e:
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-@method_decorator(csrf_exempt, name='dispatch')
+
 class AdminAllUsersOperations(APIView):
-    authentication_classes = [] # Custom token handling
-    permission_classes = [AllowAny] # Custom permission check in method
+    authentication_classes = []
+    permission_classes = [AllowAny]
 
     def get(self, request):
-        try:
-            get_admin_user_from_token(request) # Authenticate and authorize admin
-        except APIException as e:
-            return Response({"detail": e.detail}, status=e.status_code)
-
+        admin_user = get_admin_user_from_token(request)
+        
         conn = get_db_connection()
         cur = conn.cursor()
         try:
@@ -245,18 +248,16 @@ class AdminAllUsersOperations(APIView):
                     "jwt_expiration": row[5]
                 } for row in users_data
             ]
-            return Response(users_list, status=status.HTTP_200_OK)
         except psycopg2.Error as e:
             raise APIException({"detail":f"Database query error: {e}"})
         finally:
             cur.close()
             conn.close()
+            
+        return Response(users_list, status=status.HTTP_200_OK)
 
     def post(self, request):
-        try:
-            get_admin_user_from_token(request) # Authenticate and authorize admin
-        except APIException as e:
-            return Response({"detail": e.detail}, status=e.status_code)
+        admin_user = get_admin_user_from_token(request) # Validate admin token
 
         data = request.data
         user_name = data.get('user_name')
@@ -297,10 +298,6 @@ class AdminAllUsersOperations(APIView):
                 raise APIException({"detail":f"Error inserting values..."})
             
             conn.commit()
-            return Response({
-                "response": f"User '{user_name}' created successfully.",
-                "user": {"id": new_user_id, "username": user_name, "is_admin": bool(is_admin), "access": usr_access, "jwt_expiration":jwt_expiration}
-            }, status=status.HTTP_201_CREATED)
             
         except psycopg2.Error as db_error:
             conn.rollback()
@@ -311,18 +308,19 @@ class AdminAllUsersOperations(APIView):
         finally:
             cur.close()
             conn.close()
+            
+        return Response({
+                "response": f"User '{user_name}' created successfully.",
+                "user": {"id": new_user_id, "username": user_name, "is_admin": bool(is_admin), "access": usr_access, "jwt_expiration":jwt_expiration}
+            }, status=status.HTTP_201_CREATED)
 
 
-@method_decorator(csrf_exempt, name='dispatch')
 class AdminSingleUserOperations(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
 
     def get(self, request, target_user_id):
-        try:
-            get_admin_user_from_token(request)
-        except APIException as e:
-            return Response({"detail": e.detail}, status=e.status_code)
+        admin_user = get_admin_user_from_token(request) # Validate admin token
 
         conn = get_db_connection()
         cur = conn.cursor()
@@ -348,10 +346,7 @@ class AdminSingleUserOperations(APIView):
             conn.close()
 
     def put(self, request, target_user_id):
-        try:
-            admin_user = get_admin_user_from_token(request)
-        except APIException as e:
-            return Response({"detail": e.detail}, status=e.status_code)
+        admin_user = get_admin_user_from_token(request) # Validate admin token
 
         data = request.data
         user_pass = data.get('user_pass')
@@ -407,30 +402,30 @@ class AdminSingleUserOperations(APIView):
             # Fetch updated user details to return
             cur.execute("SELECT usr_id, usr_login, usr_admin, usr_access, jwt_expiration FROM usr_info WHERE usr_id = %s", (target_user_id,))
             updated_user = cur.fetchone()
-            if(not updated_user):
-                raise APIException({"detail":"No return from database..."})
-            return Response({
-                "response": f"User ID {target_user_id} updated successfully.",
-                "user": {
-                    "id": updated_user[0],
-                    "username": updated_user[1],
-                    "is_admin": updated_user[2],
-                    "access": updated_user[3],
-                    "jwt_expiration": updated_user[4]
-                }
-            }, status=status.HTTP_200_OK)
+            
         except psycopg2.Error as db_error:
             conn.rollback()
             raise APIException({"detail":f"Database error: {db_error}"})
         finally:
             cur.close()
             conn.close()
+        
+        if(not updated_user):
+            raise APIException({"detail":"No return from database..."})
+        
+        return Response({
+            "response": f"User ID {target_user_id} updated successfully.",
+            "user": {
+                "id": updated_user[0],
+                "username": updated_user[1],
+                "is_admin": updated_user[2],
+                "access": updated_user[3],
+                "jwt_expiration": updated_user[4]
+            }
+        }, status=status.HTTP_200_OK)
 
     def delete(self, request, target_user_id):
-        try:
-            admin_user = get_admin_user_from_token(request)
-        except APIException as e:
-            return Response({"detail": e.detail}, status=e.status_code)
+        admin_user = get_admin_user_from_token(request) # Validate admin token
         
         # Basic check to prevent admin from deleting themselves
         if int(admin_user["user_id"]) == int(target_user_id):
@@ -443,49 +438,45 @@ class AdminSingleUserOperations(APIView):
             cur.execute("SELECT usr_id FROM usr_info WHERE usr_id = %s", (target_user_id,))
             if not cur.fetchone():
                 return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
+            
             cur.execute("DELETE FROM usr_info WHERE usr_id = %s", (target_user_id,))
-            conn.commit()
-            if cur.rowcount == 0: # Should be caught by the check above, but as a safeguard
+            if cur.rowcount == 0: # Making sure at least one row got affected
                 return Response({"detail": "User not found or already deleted."}, status=status.HTTP_404_NOT_FOUND)
-            return Response({"response": f"User ID {target_user_id} deleted successfully."}, status=status.HTTP_200_OK) # Or HTTP_204_NO_CONTENT
+            conn.commit()
         except psycopg2.Error as db_error:
             conn.rollback()
             raise APIException({"detail":f"Database error: {db_error}"})
         finally:
             cur.close()
             conn.close()
+        
+        return Response({"response": f"User ID {target_user_id} deleted successfully."}, status=status.HTTP_200_OK) # Or HTTP_204_NO_CONTENT
             
-@method_decorator(csrf_exempt, name='dispatch') # If you're using this for other admin views
 class AdminListAllServicesView(APIView):
     authentication_classes = [] # Custom token handling
     permission_classes = [AllowAny] # Custom permission check in method
 
     def get(self, request):
-        try:
-            # Ensure only an admin user can access this list
-            get_admin_user_from_token(request) 
-        except APIException as e:
-            return Response({"detail": e.detail}, status=e.status_code)
+        admin_user = get_admin_user_from_token(request) # Validate admin token
 
         conn = get_db_connection()
         cur = conn.cursor()
         try:
-            # Fetch all services. Adjust columns if needed, but srv_id and srv_name are key.
+            # Fetch the info to all services
             cur.execute("SELECT srv_id, srv_name, srv_desc FROM services_info ORDER BY srv_name")
             services_data = cur.fetchall()
+        except psycopg2.Error as e:
+            raise APIException({"detail":f"Database query error while fetching all services: {e}"})
+        finally:
+            cur.close()
+            conn.close()
             
-            services_list = [
+        services_list = [
                 {
                     "srv_id": row[0], 
                     "srv_name": row[1], 
                     "srv_desc": row[2]
                 } for row in services_data
             ]
-            return Response(services_list, status=status.HTTP_200_OK)
-        except psycopg2.Error as e:
-            # Log the error e
-            raise APIException({"detail":f"Database query error while fetching all services: {e}"})
-        finally:
-            cur.close()
-            conn.close()
+        
+        return Response(services_list, status=status.HTTP_200_OK)
