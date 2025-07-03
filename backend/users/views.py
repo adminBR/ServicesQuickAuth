@@ -125,8 +125,9 @@ class UserLogin(APIView):
             httponly=True,
             secure=False,
             samesite="Strict",
-            path="/"
-        )
+            path="/",
+            max_age=60 * 60 * 24 * 365 * 20 if user[2]=="inf" else 60 * 60 * 24 * 1
+        ) # Cookie will last for 20 years if its infinite or the 1 day for finite
         return resp
         
 

@@ -56,7 +56,7 @@ class ServicesManager(APIView):
 
             cur.execute(f"SELECT * FROM services_info si WHERE si.srv_id IN ({user_services})")
             result = cur.fetchall()
-            users_list = [
+            services_list = [
             {
                 "srv_id": row[0],
                 "srv_image": base64.b64encode(row[1]).decode('utf-8') if row[1] else None,
@@ -65,8 +65,10 @@ class ServicesManager(APIView):
                 "srv_desc": row[4]
             } for row in result
         ]
-
-            return Response({"message": "success", "content": users_list})
+            resp = Response({"message": "success", "content": services_list})
+            return resp
+            
+        
         finally:
             cur.close()
             conn.close()
