@@ -48,9 +48,10 @@ def get_admin_user_from_token(request):
         if not expiration_str:
             raise AuthenticationFailed("Invalid token: Missing expiration.")
         
-        expiration = datetime.fromisoformat(expiration_str)
-        if expiration < datetime.now(timezone.utc):
-            raise AuthenticationFailed("Token expired")
+        if(expiration_str != "inf"):
+            expiration = datetime.fromisoformat(expiration_str)
+            if expiration < datetime.now(timezone.utc):
+                raise AuthenticationFailed("Token expired")
 
         user_id = payload.get("user_id")
         if not user_id:
